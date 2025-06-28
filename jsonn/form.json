@@ -1,0 +1,75 @@
+{
+  "elements": {
+    "fe7f23b2": {
+      "id": "fe7f23b2",
+      "children": ["4a9b191c"],
+      "type": "section"
+    },
+    "4a9b191c": {
+      "id": "4a9b191c",
+      "children": ["f63d4048"],
+      "type": "grid",
+      "parentId": "fe7f23b2"
+    },
+    "f63d4048": {
+      "id": "f63d4048",
+      "children": ["6320ba45", "fe67f02"],
+      "type": "group",
+      "parentId": "4a9b191c"
+    },
+    "6320ba45": {
+      "id": "6320ba45",
+      "type": "group",
+      "parentId": "f63d4048"
+    },
+    "fe67f02": {
+      "id": "fe67f02",
+      "children": ["872c16d1", "8f60c0d5", "widget_7hh"],
+      "type": "group",
+      "parentId": "f63d4048"
+    },
+    "872c16d1": {
+      "id": "872c16d1",
+      "type": "widget_wrapper",
+      "name": "Text Block",
+      "parentId": "fe67f02",
+      "externalId": "1513035380",
+      "data": {
+        "data-widget-type": "paragraph",
+        "text": "STRAIGHT TO YOUR DOOR",
+        "alignment": "center"
+      }
+    },
+    "8f60c0d5": {
+      "id": "8f60c0d5",
+      "type": "widget_wrapper",
+      "name": "Text Block",
+      "parentId": "fe67f02",
+      "externalId": "1368187291",
+      "data": {
+        "data-widget-type": "paragraph",
+        "text": "",
+        "alignment": "left",
+        "style": {
+          "color": "var(--color_1)",
+          "lineHeight": "2"
+        }
+      }
+    },
+    "widget_7hh": {
+      "id": "widget_7hh",
+      "type": "widget_wrapper",
+      "name": "Photo Gallery",
+      "parentId": "fe67f02",
+      "externalId": "1790264525",
+      "data": {
+        "data-widget-type": "photoGallery",
+        "columns": 3,
+        "rowsToShow": 1,
+        "layout": "square",
+        "imageHoverEffect": "zoomout"
+      }
+    }
+  },
+  "rootContainerId": "fe7f23b2"
+}
