@@ -11,15 +11,26 @@ export async function POST(request) {
     console.log("API route hit successfully");
     console.log("Request body:", body);
 
+    // Extract batchRequestBody from the request body
+    const { batchRequestBody, ...createPageData } = body;
+
+    // Validate that batchRequestBody exists
+    if (!batchRequestBody) {
+      throw new Error("batchRequestBody is required in the request body");
+    }
+
     // Step 1: Create page from scratch
-    const createPageData = await createPageFromScratch(body);
-    console.log("Full Duda API Response:", JSON.stringify(createPageData, null, 2));
+    const createPageResult = await createPageFromScratch(createPageData);
+    console.log(
+      "Full Duda API Response:",
+      JSON.stringify(createPageResult, null, 2)
+    );
 
     // Step 2: Extract required data from the response
-    const uuid = createPageData.page?.uuid;
-    const alias = createPageData.page?.alias;
-    const itemUrl = createPageData.page?.itemUrl;
-    const pageId = createPageData.page?.id;
+    const uuid = createPageResult.page?.uuid;
+    const alias = createPageResult.page?.alias;
+    const itemUrl = createPageResult.page?.itemUrl;
+    const pageId = createPageResult.page?.id;
 
     if (!uuid || !pageId) {
       throw new Error("UUID or PageID not found in create page response");
@@ -27,33 +38,43 @@ export async function POST(request) {
 
     // Step 3: Get flex structure using the UUID
     const flexStructureData = await getFlexStructure(uuid, alias);
-    console.log("Flex Structure Response:", JSON.stringify(flexStructureData, null, 2));
+    console.log(
+      "Flex Structure Response:",
+      JSON.stringify(flexStructureData, null, 2)
+    );
 
     // Step 4: Extract hierarchical IDs from flex structure
     const extractedIds = extractHierarchicalIds(flexStructureData);
     console.log("Extracted Hierarchical IDs:", extractedIds);
 
     // Step 5: Parse HTML to match sections
-    const { matchedSections, htmlIds, flexWidgetIds } = await parsePageHtml(alias, extractedIds);
-    
-    // Step 6: Execute batch operations
+    const { matchedSections, htmlIds, flexWidgetIds } = await parsePageHtml(
+      alias,
+      extractedIds
+    );
+
+    // Step 6: Execute batch operations with the batchRequestBody from the request
     const batchResults = await executeBatchOperations(
-      pageId, 
-      uuid, 
-      alias, 
-      extractedIds, 
-      htmlIds, 
-      flexWidgetIds
+      pageId,
+      uuid,
+      alias,
+      extractedIds,
+      htmlIds,
+      flexWidgetIds,
+      batchRequestBody // This now comes from the request body
     );
 
     // Step 7: Return comprehensive response
     return NextResponse.json({
       success: batchResults.some((r) => r.success),
       data: {
-        createPage: createPageData,
+        createPage: createPageResult,
         extractedData: { uuid, alias, itemUrl, pageId },
         flexStructure: flexStructureData,
         extractedIds,
+        matchedSections,
+        htmlIds,
+        flexWidgetIds,
         batchResults,
         summary: {
           totalSections: extractedIds.length,
@@ -63,6 +84,7 @@ export async function POST(request) {
       },
     });
   } catch (error) {
+    console.error("Error in POST handler:", error);
     return handleError(error);
   }
 }

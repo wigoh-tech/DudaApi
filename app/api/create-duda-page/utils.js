@@ -12,30 +12,17 @@ export function extractDivId(htmlString) {
   return dudaIdMatch ? dudaIdMatch[1] : null;
 }
 
-export async function withRetry(fn, maxRetries = 3, delayMs = 2000) {
+export async function withRetry(operation, maxRetries = 1, delayMs = 1000) {
   let attempt = 0;
-  while (attempt < maxRetries) {
+  while (true) {
     try {
-      const response = await fn();
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-      const rawResponse = await response.text();
-      try {
-        return JSON.parse(rawResponse);
-      } catch (e) {
-        if (rawResponse.startsWith("<")) {
-          throw new Error(`Received HTML instead of JSON. Response start: ${rawResponse.substring(0, 100)}`);
-        }
-        throw new Error(`Invalid JSON response: ${rawResponse.substring(0, 100)}`);
-      }
+      return await operation();
     } catch (error) {
       attempt++;
       if (attempt >= maxRetries) {
-        throw new Error(`All ${maxRetries} attempts failed. Last error: ${error.message}`);
+        throw error; // Just throw the original error without wrapping
       }
-      await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
+      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
     }
   }
 }
@@ -46,4 +33,14 @@ export function handleError(error) {
     { success: false, error: error.message },
     { status: 500 }
   );
+}
+
+// Add this to your utils.js file
+export function generateNumericId(length = 8) {
+  const digits = "0123456789";
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += digits.charAt(Math.floor(Math.random() * digits.length));
+  }
+  return result;
 }
