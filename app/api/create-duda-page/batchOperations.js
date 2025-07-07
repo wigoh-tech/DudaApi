@@ -1,8 +1,7 @@
-// Fixed batchOperations.js with proper error handling and response processing
-// Updated batchOperations.js with enhanced ID extraction and flex structure updating
+// Fixed batchOperations.js with proper dynamic widget ID handling
 import { DUDA_API_CONFIG } from "../../../lib/dudaApi";
 import { generateUniqueId, withRetry, generateNumericId } from "./utils";
-import * as cheerio from 'cheerio';
+import * as cheerio from "cheerio";
 
 export async function executeBatchOperations(
   pageId,
@@ -122,6 +121,7 @@ export async function executeBatchOperations(
         htmlIdUsed: htmlId,
         insertedElementIds: { [result.widgetId]: result.insertedElementId },
         batchResults: result.batchResponse,
+        flexStructureUpdateResponse: result.flexStructureUpdateResponse,
         error: null,
       });
 
@@ -171,11 +171,15 @@ async function executeBatchRequest(
 ) {
   try {
     console.log("\n===== EXECUTING SINGLE ATTEMPT BATCH REQUEST =====");
-    
-    // Prepare batch data (same as before)
+
+    // Generate dynamic IDs for this request
     const widgetId = [`widget_${generateUniqueId().substring(0, 8)}`];
     const divId = [generateNumericId()];
-    
+
+    console.log("Generated Widget ID:", widgetId[0]);
+    console.log("Generated Div ID:", divId[0]);
+
+    // Prepare initial batch data
     const batchData = prepareBatchRequestData(
       batchRequestBody,
       pageId,
@@ -186,7 +190,10 @@ async function executeBatchRequest(
       divId
     );
 
-    console.log("\nSending batch request...");
+    console.log("\n===== PREPARED BATCH DATA =====");
+    console.log(JSON.stringify(batchData, null, 2));
+
+    console.log("\nSending initial batch request...");
     const response = await fetch(
       `${DUDA_API_CONFIG.baseUrl}/uis/batch?op=create%20widget%20in%20flex&dm_device=desktop&currentEditorPageId=${pageId}`,
       {
@@ -197,15 +204,21 @@ async function executeBatchRequest(
     );
 
     console.log("Response status:", response.status);
-    
+
     // Process response
     const responseText = await response.text();
     console.log("\n===== RAW RESPONSE =====");
     console.log(responseText);
-    
+
     if (!response.ok) {
-      console.error("Batch request failed:", response.status, response.statusText);
-      throw new Error(`Batch request failed: ${response.status} ${response.statusText}`);
+      console.error(
+        "Batch request failed:",
+        response.status,
+        response.statusText
+      );
+      throw new Error(
+        `Batch request failed: ${response.status} ${response.statusText}`
+      );
     }
 
     let jsonResponse;
@@ -220,23 +233,84 @@ async function executeBatchRequest(
     console.log(JSON.stringify(jsonResponse, null, 2));
 
     // Extract inserted element ID from the response
-    const insertedElementId = extractInsertedElementIdFromResponse(jsonResponse);
+    const insertedElementId =
+      extractInsertedElementIdFromResponse(jsonResponse);
 
     if (!insertedElementId) {
       console.error("Could not extract inserted element ID from response");
-      console.error("Full response structure:", JSON.stringify(jsonResponse, null, 2));
+      console.error(
+        "Full response structure:",
+        JSON.stringify(jsonResponse, null, 2)
+      );
       throw new Error("Could not extract inserted element ID from response");
     }
 
-    console.log("\n===== FINAL RESULT =====");
-    console.log("Successfully inserted element with ID:", insertedElementId);
+    console.log("\n===== EXTRACTED ELEMENT ID =====");
+    console.log("Successfully extracted element ID:", insertedElementId);
     console.log("Widget ID used:", widgetId[0]);
+
+    // Now update the flex structure with the extracted element ID
+    const updatedBatchData = updateFlexStructureWithElementId(
+      batchData,
+      widgetId[0],
+      insertedElementId
+    );
+
+    console.log("\n===== UPDATED BATCH DATA =====");
+    console.log(JSON.stringify(updatedBatchData, null, 2));
+
+    // Send the updated batch request
+    console.log("\nSending flex structure update request...");
+    const updateResponse = await fetch(
+      `${DUDA_API_CONFIG.baseUrl}/uis/batch?op=update%20flex%20structure&dm_device=desktop&currentEditorPageId=${pageId}`,
+      {
+        method: "POST",
+        headers: getBatchHeaders(alias),
+        body: JSON.stringify(updatedBatchData),
+      }
+    );
+
+    // Process the update response
+    const updateResponseText = await updateResponse.text();
+    console.log("\n===== FLEX STRUCTURE UPDATE RESPONSE =====");
+    console.log(updateResponseText);
+
+    if (!updateResponse.ok) {
+      console.error(
+        "Flex structure update failed:",
+        updateResponse.status,
+        updateResponse.statusText
+      );
+      throw new Error(
+        `Flex structure update failed: ${updateResponse.status} ${updateResponse.statusText}`
+      );
+    }
+
+    let updateJsonResponse;
+    try {
+      updateJsonResponse = JSON.parse(updateResponseText);
+    } catch (error) {
+      console.error(
+        "Failed to parse flex structure update JSON response:",
+        error
+      );
+      throw new Error("Invalid JSON response from flex structure update");
+    }
+
+    console.log("\n===== PARSED FLEX STRUCTURE UPDATE RESPONSE =====");
+    console.log(JSON.stringify(updateJsonResponse, null, 2));
+
+    console.log("\n===== FINAL RESULT =====");
+    console.log("Successfully completed batch operation");
+    console.log("Widget ID:", widgetId[0]);
+    console.log("Inserted Element ID:", insertedElementId);
 
     return {
       success: true,
       widgetId: widgetId[0],
       insertedElementId,
       batchResponse: jsonResponse,
+      flexStructureUpdateResponse: updateJsonResponse,
     };
   } catch (error) {
     console.error("\nBatch request failed:", error);
@@ -261,32 +335,36 @@ function extractInsertedElementIdFromResponse(responseData) {
 
     // Handle different response structures
     let elementHtml = null;
-    
+
     // Check if response is an object with URL keys (like your example)
-    if (typeof responseData === 'object' && !Array.isArray(responseData)) {
+    if (typeof responseData === "object" && !Array.isArray(responseData)) {
       // Look for insertElement response
-      const insertElementKey = Object.keys(responseData).find(key => 
-        key.includes('insertElement')
+      const insertElementKey = Object.keys(responseData).find((key) =>
+        key.includes("insertElement")
       );
-      
+
       if (insertElementKey) {
         console.log("Found insertElement response key:", insertElementKey);
         const insertData = responseData[insertElementKey];
-        
+
         if (insertData && insertData.element) {
           elementHtml = insertData.element;
           console.log("Found element HTML in insertElement response");
         }
       }
     }
-    
+
     // If it's an array, look for the insertElement response
     if (Array.isArray(responseData)) {
-      const insertResponse = responseData.find(item => 
-        item.url && item.url.includes('insertElement')
+      const insertResponse = responseData.find(
+        (item) => item.url && item.url.includes("insertElement")
       );
-      
-      if (insertResponse && insertResponse.data && insertResponse.data.element) {
+
+      if (
+        insertResponse &&
+        insertResponse.data &&
+        insertResponse.data.element
+      ) {
         elementHtml = insertResponse.data.element;
         console.log("Found element HTML in array response");
       }
@@ -312,29 +390,33 @@ function extractInsertedElementIdFromResponse(responseData) {
 
     // Parse the HTML to extract the ID
     const $ = cheerio.load(elementHtml);
-    
+
     // Look for any element with an ID that looks like what we need
     let elementId = null;
-    
+
     // Try different selectors
     const selectors = [
-      'div[id]',  // Any div with an ID
-      '[id]',     // Any element with an ID
-      'div.dmNewParagraph[id]',  // Specific class with ID
-      'div[duda_id]',  // duda_id attribute
-      '[data-element-id]'  // data-element-id attribute
+      "div[id]", // Any div with an ID
+      "[id]", // Any element with an ID
+      "div.dmNewParagraph[id]", // Specific class with ID
+      "div[duda_id]", // duda_id attribute
+      "[data-element-id]", // data-element-id attribute
     ];
 
     for (const selector of selectors) {
       const elements = $(selector);
       if (elements.length > 0) {
         const firstElement = elements.first();
-        elementId = firstElement.attr('id') || 
-                   firstElement.attr('duda_id') || 
-                   firstElement.attr('data-element-id');
-        
+        elementId =
+          firstElement.attr("id") ||
+          firstElement.attr("duda_id") ||
+          firstElement.attr("data-element-id");
+
         if (elementId) {
-          console.log(`Found element ID using selector "${selector}":`, elementId);
+          console.log(
+            `Found element ID using selector "${selector}":`,
+            elementId
+          );
           break;
         }
       }
@@ -342,9 +424,9 @@ function extractInsertedElementIdFromResponse(responseData) {
 
     // If we still don't have an ID, try to extract from any attribute
     if (!elementId) {
-      $('*').each((i, element) => {
+      $("*").each((i, element) => {
         const $el = $(element);
-        const id = $el.attr('id');
+        const id = $el.attr("id");
         if (id && id.length > 0) {
           elementId = id;
           console.log("Found ID from general search:", elementId);
@@ -361,7 +443,6 @@ function extractInsertedElementIdFromResponse(responseData) {
       console.log("HTML structure:", elementHtml);
       return null;
     }
-
   } catch (error) {
     console.error("Error extracting inserted element ID from response:", error);
     console.error("Response data:", responseData);
@@ -369,7 +450,11 @@ function extractInsertedElementIdFromResponse(responseData) {
   }
 }
 
-function updateFlexStructureWithElementId(batchData, widgetId, insertedElementId) {
+function updateFlexStructureWithElementId(
+  batchData,
+  widgetId,
+  insertedElementId
+) {
   console.log("\n===== UPDATING FLEX STRUCTURE =====");
   console.log("Widget ID:", widgetId);
   console.log("Inserted Element ID:", insertedElementId);
@@ -381,19 +466,102 @@ function updateFlexStructureWithElementId(batchData, widgetId, insertedElementId
         const flexData = JSON.parse(JSON.stringify(request.data));
 
         // If the flex data is a string, parse it first
-        let flexDataObj = typeof flexData === 'string' ? JSON.parse(flexData) : flexData;
-        
-        // Find the widget in the structure and update its externalId
-        if (flexDataObj.widgets && flexDataObj.widgets[widgetId]) {
-          flexDataObj.widgets[widgetId].externalId = insertedElementId;
-        } else if (flexDataObj[widgetId]) {
-          flexDataObj[widgetId].externalId = insertedElementId;
+        let flexDataObj =
+          typeof flexData === "string" ? JSON.parse(flexData) : flexData;
+
+        // Enhanced widget update logic
+        if (flexDataObj.elements) {
+          console.log(
+            "Available elements in structure:",
+            Object.keys(flexDataObj.elements)
+          );
+
+          // Strategy 1: Find by exact widget ID match
+          if (flexDataObj.elements[widgetId]) {
+            console.log(`Found exact widget match: ${widgetId}`);
+            flexDataObj.elements[widgetId].externalId = insertedElementId;
+            console.log(
+              `Updated widget ${widgetId} with externalId: ${insertedElementId}`
+            );
+          } else {
+            console.log(
+              `Widget ${widgetId} not found in elements, searching by properties...`
+            );
+
+            // Strategy 2: Find by widget properties
+            Object.keys(flexDataObj.elements).forEach((elementKey) => {
+              const element = flexDataObj.elements[elementKey];
+
+              // Check if this is a widget_wrapper of type paragraph
+              if (
+                element.type === "widget_wrapper" &&
+                element.data &&
+                element.data["data-widget-type"] === "paragraph"
+              ) {
+                // Additional checks for better matching
+                const hasNoExternalId = !element.externalId;
+                const hasPlaceholderExternalId =
+                  element.externalId === "div[id]";
+                const nameMatches = element.name === "Text Block";
+
+                if (
+                  hasNoExternalId ||
+                  hasPlaceholderExternalId ||
+                  nameMatches
+                ) {
+                  console.log(
+                    `Updating paragraph widget ${elementKey} with externalId: ${insertedElementId}`
+                  );
+                  element.externalId = insertedElementId;
+                }
+              }
+            });
+          }
+        }
+
+        // Legacy support: also check for 'widgets' property
+        if (flexDataObj.widgets) {
+          console.log(
+            "Available widgets in structure:",
+            Object.keys(flexDataObj.widgets)
+          );
+
+          // First, try to find the specific widget by ID
+          if (flexDataObj.widgets[widgetId]) {
+            console.log(
+              `Found and updating specific widget ${widgetId} with externalId ${insertedElementId}`
+            );
+            flexDataObj.widgets[widgetId].externalId = insertedElementId;
+          } else {
+            console.log(
+              `Widget ${widgetId} not found in widgets, searching by properties...`
+            );
+
+            // If the specific widget ID doesn't exist, find by properties
+            Object.keys(flexDataObj.widgets).forEach((key) => {
+              const widget = flexDataObj.widgets[key];
+
+              // Check if this is a text block widget that matches our criteria
+              if (
+                widget.type === "widget_wrapper" &&
+                widget.data &&
+                widget.data["data-widget-type"] === "paragraph" &&
+                (!widget.externalId || widget.externalId === "div[id]")
+              ) {
+                console.log(
+                  `Updating text block widget ${key} with externalId ${insertedElementId}`
+                );
+                widget.externalId = insertedElementId;
+              }
+            });
+          }
         }
 
         // Convert back to string if it was originally a string
-        const updatedData = typeof flexData === 'string' 
-          ? JSON.stringify(flexDataObj)
-          : flexDataObj;
+        const updatedData =
+          typeof flexData === "string"
+            ? JSON.stringify(flexDataObj)
+            : flexDataObj;
 
         console.log("Updated flex structure:");
         console.log(JSON.stringify(updatedData, null, 2));
@@ -410,6 +578,103 @@ function updateFlexStructureWithElementId(batchData, widgetId, insertedElementId
     return batchData;
   }
 }
+
+// Helper function to manually update a flex structure object
+function updateFlexStructureObject(flexStructure, widgetId, insertedElementId) {
+  console.log("\n===== MANUAL FLEX STRUCTURE UPDATE =====");
+  console.log("Widget ID:", widgetId);
+  console.log("Inserted Element ID:", insertedElementId);
+
+  try {
+    // Create a deep copy to avoid mutating the original
+    const updatedStructure = JSON.parse(JSON.stringify(flexStructure));
+
+    // Check if we have elements property (newer structure)
+    if (updatedStructure.elements) {
+      // Strategy 1: Direct ID match
+      if (updatedStructure.elements[widgetId]) {
+        console.log(`Direct match found for widget: ${widgetId}`);
+        updatedStructure.elements[widgetId].externalId = insertedElementId;
+      } else {
+        // Strategy 2: Find by widget type and properties
+        Object.keys(updatedStructure.elements).forEach((elementKey) => {
+          const element = updatedStructure.elements[elementKey];
+
+          if (
+            element.type === "widget_wrapper" &&
+            element.data &&
+            element.data["data-widget-type"] === "paragraph"
+          ) {
+            // Check if this widget needs an externalId update
+            const needsUpdate =
+              !element.externalId ||
+              element.externalId === "div[id]" ||
+              element.name === "Text Block";
+
+            if (needsUpdate) {
+              console.log(
+                `Updating widget ${elementKey} with externalId: ${insertedElementId}`
+              );
+              element.externalId = insertedElementId;
+            }
+          }
+        });
+      }
+    }
+
+    console.log("Flex structure updated successfully");
+    return updatedStructure;
+  } catch (error) {
+    console.error("Error in manual flex structure update:", error);
+    return flexStructure;
+  }
+}
+
+// Example usage with your specific structure
+function updateSpecificWidget(flexStructure, extractedElementId) {
+  const updatedStructure = JSON.parse(JSON.stringify(flexStructure));
+
+  // Update the specific widget_pn5tn1
+  if (updatedStructure.elements && updatedStructure.elements["widget_pn5tn1"]) {
+    updatedStructure.elements["widget_pn5tn1"].externalId = extractedElementId;
+    console.log(`Updated widget_pn5tn1 with externalId: ${extractedElementId}`);
+  }
+
+  return updatedStructure;
+}
+
+// Debug function to check what widgets are available
+function debugFlexStructure(flexStructure) {
+  console.log("\n===== FLEX STRUCTURE DEBUG =====");
+
+  if (flexStructure.elements) {
+    console.log("Elements found:");
+    Object.keys(flexStructure.elements).forEach((key) => {
+      const element = flexStructure.elements[key];
+      console.log(`- ${key}: ${element.type} ${element.name || ""}`);
+
+      if (element.type === "widget_wrapper") {
+        console.log(`  * Widget Type: ${element.data["data-widget-type"]}`);
+        console.log(`  * External ID: ${element.externalId || "none"}`);
+      }
+    });
+  }
+
+  if (flexStructure.widgets) {
+    console.log("Widgets found:");
+    Object.keys(flexStructure.widgets).forEach((key) => {
+      const widget = flexStructure.widgets[key];
+      console.log(`- ${key}: ${widget.type} ${widget.name || ""}`);
+    });
+  }
+}
+
+export {
+  updateFlexStructureWithElementId,
+  updateFlexStructureObject,
+  updateSpecificWidget,
+  debugFlexStructure,
+};
 
 export async function testBatchRequest(pageId, uuid, alias, batchRequestBody) {
   console.log("\n===== TESTING BATCH REQUEST =====");
@@ -471,6 +736,10 @@ function prepareBatchRequestData(
   divId
 ) {
   try {
+    console.log("\n===== PREPARING BATCH REQUEST DATA =====");
+    console.log("Widget ID being used:", widgetId[0]);
+    console.log("Div ID being used:", divId[0]);
+
     const preparedBatch = batchRequestBody.map((request, index) => {
       const preparedRequest = { ...request };
 
@@ -493,6 +762,11 @@ function prepareBatchRequestData(
           before: request.data.before || null,
           defaultLocation: request.data.defaultLocation || false,
         };
+
+        console.log("Prepared insertElement request:");
+        console.log("- URL:", preparedRequest.url);
+        console.log("- Markup:", processedMarkup);
+        console.log("- Parent:", flexWidgetId);
       } else if (request.url.includes("flexStructure")) {
         preparedRequest.url = `/pages/${uuid}/flexStructure?dm_batchReqId=${Math.random()
           .toString(36)
@@ -505,11 +779,16 @@ function prepareBatchRequestData(
           widgetId,
           divId
         );
+
+        console.log("Prepared flexStructure request:");
+        console.log("- URL:", preparedRequest.url);
+        console.log("- Data type:", typeof preparedRequest.data);
       }
 
       return preparedRequest;
     });
 
+    console.log("Prepared batch data with", preparedBatch.length, "requests");
     return preparedBatch;
   } catch (error) {
     console.error("Error preparing batch request data:", error);
@@ -616,3 +895,4 @@ function prepareFlexStructureData(
     throw error;
   }
 }
+
