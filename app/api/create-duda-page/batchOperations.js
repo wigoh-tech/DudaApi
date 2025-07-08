@@ -1,7 +1,62 @@
-// Fixed batchOperations.js with proper dynamic widget ID handling
+// Enhanced batchOperations.js with Zod validation and improved error handling
+import { z } from "zod";
 import { DUDA_API_CONFIG } from "../../../lib/dudaApi";
-import { generateUniqueId, withRetry, generateNumericId } from "./utils";
+import { generateUniqueId, generateNumericId } from "./utils";
 import * as cheerio from "cheerio";
+
+// Zod schemas for validation
+const ElementDataSchema = z.object({
+  "data-layout-grid": z.string().optional(),
+}).optional();
+
+const ElementSchema = z.object({
+  type: z.enum(["section", "grid", "group", "widget_wrapper"]),
+  id: z.string(),
+  parentId: z.union([z.string(), z.array(z.string())]).optional(),
+  children: z.array(z.string()).optional(),
+  name: z.string().optional(),
+  data: ElementDataSchema,
+  customClassName: z.string().optional(),
+  externalId: z.string().optional(),
+});
+
+const StyleRuleSchema = z.object({
+  "<id>": z.record(z.string(), z.string()),
+});
+
+const StylesSchema = z.object({
+  breakpoints: z.object({
+    mobile: z.object({
+      idToRules: z.record(z.string(), StyleRuleSchema),
+    }).optional(),
+    common: z.object({
+      idToRules: z.record(z.string(), StyleRuleSchema),
+    }),
+  }),
+});
+
+const FlexStructureSchema = z.object({
+  id: z.string(),
+  section: ElementSchema,
+  rootContainerId: z.string(),
+  elements: z.record(z.string(), ElementSchema),
+  styles: StylesSchema,
+});
+
+const SectionIdsSchema = z.object({
+  sectionId: z.string(),
+  gridId: z.string(),
+  parentGroupId: z.string(),
+  childGroup1Id: z.string(),
+  childGroup2Id: z.string(),
+  elementId: z.string().optional(),
+});
+
+const BatchRequestSchema = z.object({
+  type: z.enum(["post", "put", "get", "delete"]),
+  url: z.string(),
+  data: z.record(z.string(), z.any()),
+});
 
 export async function executeBatchOperations(
   pageId,
@@ -12,7 +67,7 @@ export async function executeBatchOperations(
   flexWidgetIds,
   batchRequestBody
 ) {
-  console.log("\n===== STARTING BATCH OPERATIONS =====");
+  console.log("\n===== STARTING ENHANCED BATCH OPERATIONS =====");
   console.log("Initial Parameters:");
   console.log("- Page ID:", pageId);
   console.log("- UUID:", uuid);
@@ -22,23 +77,30 @@ export async function executeBatchOperations(
   console.log("- Flex Widget IDs Count:", flexWidgetIds.length);
   console.log("- Batch Request Body Type:", typeof batchRequestBody);
 
-  // Print the complete batch request body
-  console.log("\n===== BATCH REQUEST BODY =====");
-  console.log(JSON.stringify(batchRequestBody, null, 2));
-  console.log("=============================");
+  // Validate input parameters
+  try {
+    z.array(BatchRequestSchema).parse(batchRequestBody);
+    console.log("✓ Batch request body validation passed");
+  } catch (error) {
+    console.error("✗ Batch request body validation failed:", error.errors);
+    throw new Error(`Invalid batch request body: ${error.message}`);
+  }
 
   // Validate batchRequestBody
-  if (!batchRequestBody) {
-    throw new Error("Batch request body is required but was not provided");
+  if (
+    !batchRequestBody ||
+    !Array.isArray(batchRequestBody) ||
+    batchRequestBody.length === 0
+  ) {
+    throw new Error(
+      "Batch request body is required and must be a non-empty array"
+    );
   }
 
-  if (!Array.isArray(batchRequestBody)) {
-    throw new Error("Batch request body must be an array");
-  }
-
-  if (batchRequestBody.length === 0) {
-    throw new Error("Batch request body cannot be empty");
-  }
+  // Analyze the batch request body to understand the structure
+  const batchAnalysis = analyzeBatchRequestBody(batchRequestBody);
+  console.log("\n===== BATCH REQUEST ANALYSIS =====");
+  console.log("Analysis:", JSON.stringify(batchAnalysis, null, 2));
 
   const batchResults = [];
 
@@ -48,84 +110,60 @@ export async function executeBatchOperations(
     const flexWidgetId = flexWidgetIds[i];
 
     console.log(`\n===== PROCESSING SECTION ${i + 1} =====`);
-    console.log("Section Details:");
-    console.log("- Section ID:", section.sectionId);
-    console.log("- Grid ID:", section.gridId);
-    console.log("- Parent Group ID:", section.parentGroupId);
-    console.log("- Child Group 1 ID:", section.childGroup1Id);
-    console.log("- Child Group 2 ID:", section.childGroup2Id);
-    console.log("- HTML ID:", htmlId);
-    console.log("- Flex Widget ID:", flexWidgetId);
+    console.log("Section Details:", section);
+    console.log("HTML ID:", htmlId);
+    console.log("Flex Widget ID:", flexWidgetId);
 
-    if (
-      !section.childGroup1Id ||
-      !section.sectionId ||
-      !section.gridId ||
-      !section.parentGroupId ||
-      !section.childGroup2Id ||
-      !flexWidgetId
-    ) {
-      const missingIds = {
-        childGroup1Id: !section.childGroup1Id,
-        sectionId: !section.sectionId,
-        gridId: !section.gridId,
-        parentGroupId: !section.parentGroupId,
-        childGroup2Id: !section.childGroup2Id,
-        flexWidgetId: !flexWidgetId,
-      };
+    // Validate section IDs
+    try {
+      SectionIdsSchema.parse(section);
+      console.log("✓ Section IDs validation passed");
+    } catch (error) {
+      console.error("✗ Section IDs validation failed:", error.errors);
+      batchResults.push({
+        sectionIndex: i + 1,
+        sectionId: section.sectionId,
+        success: false,
+        error: `Invalid section IDs: ${error.message}`,
+        htmlIdUsed: htmlId,
+      });
+      continue;
+    }
 
-      console.error("Missing required IDs:", missingIds);
-
+    if (!validateSectionIds(section, flexWidgetId)) {
       batchResults.push({
         sectionIndex: i + 1,
         sectionId: section.sectionId,
         success: false,
         error: "Missing required IDs",
         htmlIdUsed: htmlId,
-        missingIds,
       });
       continue;
     }
 
     try {
-      console.log("\n--- Executing Batch API Request ---");
-      const result = await executeBatchRequest(
+      const result = await executeDynamicBatchRequest(
         pageId,
         uuid,
         alias,
         section,
         flexWidgetId,
-        batchRequestBody
+        batchRequestBody,
+        batchAnalysis
       );
-
-      if (!result.success) {
-        console.error("Batch operation failed:", result.error);
-        batchResults.push({
-          sectionIndex: i + 1,
-          sectionId: section.sectionId,
-          success: false,
-          error: result.error,
-          htmlIdUsed: htmlId,
-        });
-        continue;
-      }
-
-      console.log("\n--- Batch Operation Successful ---");
-      console.log("Widget ID:", result.widgetId);
-      console.log("Inserted Element ID:", result.insertedElementId);
 
       batchResults.push({
         sectionIndex: i + 1,
         sectionId: section.sectionId,
-        success: true,
+        success: result.success,
         htmlIdUsed: htmlId,
-        insertedElementIds: { [result.widgetId]: result.insertedElementId },
-        batchResults: result.batchResponse,
+        insertedElements: result.insertedElements || [],
+        batchResponses: result.batchResponses || [],
         flexStructureUpdateResponse: result.flexStructureUpdateResponse,
-        error: null,
+        error: result.error,
       });
 
-      // Add delay between sections if needed
+      // Add delay between sections
       if (i < extractedIds.length - 1) {
         console.log("\n--- Adding delay before next section ---");
         await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -138,15 +176,11 @@ export async function executeBatchOperations(
         success: false,
         error: error.message,
         htmlIdUsed: htmlId,
-        errorDetails: {
-          stack: error.stack,
-          name: error.name,
-        },
       });
     }
   }
 
-  console.log("\n===== BATCH OPERATIONS COMPLETE =====");
+  console.log("\n===== ENHANCED BATCH OPERATIONS COMPLETE =====");
   console.log("Results Summary:");
   console.log("- Total Sections Processed:", batchResults.length);
   console.log(
@@ -161,167 +195,517 @@ export async function executeBatchOperations(
   return batchResults;
 }
 
-async function executeBatchRequest(
+function analyzeBatchRequestBody(batchRequestBody) {
+  const insertElementRequests = batchRequestBody.filter(
+    (req) => req.url && req.url.includes("insertElement")
+  );
+
+  const flexStructureRequests = batchRequestBody.filter(
+    (req) => req.url && req.url.includes("flexStructure")
+  );
+
+  const analysis = {
+    totalRequests: batchRequestBody.length,
+    insertElementCount: insertElementRequests.length,
+    flexStructureCount: flexStructureRequests.length,
+    insertElements: insertElementRequests.map((req, index) => ({
+      index,
+      markup: req.data?.markup || "",
+      widgetType: extractWidgetTypeFromMarkup(req.data?.markup || ""),
+      hasId: req.data?.markup?.includes("id=") || false,
+    })),
+    flexStructure:
+      flexStructureRequests.length > 0
+        ? analyzeFlexStructure(flexStructureRequests[0].data)
+        : null,
+  };
+
+  return analysis;
+}
+
+function extractWidgetTypeFromMarkup(markup) {
+  if (markup.includes('data-element-type="paragraph"')) return "paragraph";
+  if (markup.includes('data-element-type="image"')) return "image";
+  if (markup.includes('data-element-type="button"')) return "button";
+  return "unknown";
+}
+
+function analyzeFlexStructure(flexData) {
+  if (!flexData || !flexData.elements) return null;
+
+  const widgets = Object.keys(flexData.elements).filter(
+    (key) => flexData.elements[key].type === "widget_wrapper"
+  );
+
+  const groups = Object.keys(flexData.elements).filter(
+    (key) => flexData.elements[key].type === "group"
+  );
+
+  return {
+    widgetCount: widgets.length,
+    groupCount: groups.length,
+    widgetIds: widgets,
+    groupIds: groups,
+  };
+}
+
+function validateSectionIds(section, flexWidgetId) {
+  const requiredIds = [
+    "childGroup1Id",
+    "sectionId",
+    "gridId",
+    "parentGroupId",
+    "childGroup2Id",
+  ];
+
+  return requiredIds.every((id) => section[id]) && flexWidgetId;
+}
+
+async function executeDynamicBatchRequest(
   pageId,
   uuid,
   alias,
   section,
   flexWidgetId,
-  batchRequestBody
+  batchRequestBody,
+  batchAnalysis
 ) {
+  console.log("\n===== EXECUTING DYNAMIC BATCH REQUEST =====");
+
   try {
-    console.log("\n===== EXECUTING SINGLE ATTEMPT BATCH REQUEST =====");
+    // Generate dynamic IDs for all widgets we need to insert
+    const dynamicIds = generateDynamicIdsForBatch(batchAnalysis);
+    console.log("Generated Dynamic IDs:", dynamicIds);
 
-    // Generate dynamic IDs for this request
-    const widgetId = [`widget_${generateUniqueId().substring(0, 8)}`];
-    const divId = [generateNumericId()];
-
-    console.log("Generated Widget ID:", widgetId[0]);
-    console.log("Generated Div ID:", divId[0]);
-
-    // Prepare initial batch data
-    const batchData = prepareBatchRequestData(
-      batchRequestBody,
+    // Step 1: Insert all elements
+    const insertResults = await insertMultipleElements(
       pageId,
-      uuid,
+      alias,
       section,
       flexWidgetId,
-      widgetId,
-      divId
+      batchRequestBody,
+      dynamicIds
     );
 
-    console.log("\n===== PREPARED BATCH DATA =====");
-    console.log(JSON.stringify(batchData, null, 2));
+    if (!insertResults.success) {
+      return {
+        success: false,
+        error: insertResults.error,
+        insertedElements: [],
+        batchResponses: [],
+      };
+    }
 
-    console.log("\nSending initial batch request...");
-    const response = await fetch(
-      `${DUDA_API_CONFIG.baseUrl}/uis/batch?op=create%20widget%20in%20flex&dm_device=desktop&currentEditorPageId=${pageId}`,
-      {
-        method: "POST",
-        headers: getBatchHeaders(alias),
-        body: JSON.stringify(batchData),
-      }
+    // Step 2: Update flex structure with all inserted elements
+    const flexUpdateResult = await updateFlexStructureWithMultipleElements(
+      pageId,
+      uuid,
+      alias,
+      section,
+      flexWidgetId,
+      batchRequestBody,
+      dynamicIds,
+      insertResults.insertedElements
     );
-
-    console.log("Response status:", response.status);
-
-    // Process response
-    const responseText = await response.text();
-    console.log("\n===== RAW RESPONSE =====");
-    console.log(responseText);
-
-    if (!response.ok) {
-      console.error(
-        "Batch request failed:",
-        response.status,
-        response.statusText
-      );
-      throw new Error(
-        `Batch request failed: ${response.status} ${response.statusText}`
-      );
-    }
-
-    let jsonResponse;
-    try {
-      jsonResponse = JSON.parse(responseText);
-    } catch (error) {
-      console.error("Failed to parse JSON response:", error);
-      throw new Error("Invalid JSON response from server");
-    }
-
-    console.log("\n===== PARSED RESPONSE =====");
-    console.log(JSON.stringify(jsonResponse, null, 2));
-
-    // Extract inserted element ID from the response
-    const insertedElementId =
-      extractInsertedElementIdFromResponse(jsonResponse);
-
-    if (!insertedElementId) {
-      console.error("Could not extract inserted element ID from response");
-      console.error(
-        "Full response structure:",
-        JSON.stringify(jsonResponse, null, 2)
-      );
-      throw new Error("Could not extract inserted element ID from response");
-    }
-
-    console.log("\n===== EXTRACTED ELEMENT ID =====");
-    console.log("Successfully extracted element ID:", insertedElementId);
-    console.log("Widget ID used:", widgetId[0]);
-
-    // Now update the flex structure with the extracted element ID
-    const updatedBatchData = updateFlexStructureWithElementId(
-      batchData,
-      widgetId[0],
-      insertedElementId
-    );
-
-    console.log("\n===== UPDATED BATCH DATA =====");
-    console.log(JSON.stringify(updatedBatchData, null, 2));
-
-    // Send the updated batch request
-    console.log("\nSending flex structure update request...");
-    const updateResponse = await fetch(
-      `${DUDA_API_CONFIG.baseUrl}/uis/batch?op=update%20flex%20structure&dm_device=desktop&currentEditorPageId=${pageId}`,
-      {
-        method: "POST",
-        headers: getBatchHeaders(alias),
-        body: JSON.stringify(updatedBatchData),
-      }
-    );
-
-    // Process the update response
-    const updateResponseText = await updateResponse.text();
-    console.log("\n===== FLEX STRUCTURE UPDATE RESPONSE =====");
-    console.log(updateResponseText);
-
-    if (!updateResponse.ok) {
-      console.error(
-        "Flex structure update failed:",
-        updateResponse.status,
-        updateResponse.statusText
-      );
-      throw new Error(
-        `Flex structure update failed: ${updateResponse.status} ${updateResponse.statusText}`
-      );
-    }
-
-    let updateJsonResponse;
-    try {
-      updateJsonResponse = JSON.parse(updateResponseText);
-    } catch (error) {
-      console.error(
-        "Failed to parse flex structure update JSON response:",
-        error
-      );
-      throw new Error("Invalid JSON response from flex structure update");
-    }
-
-    console.log("\n===== PARSED FLEX STRUCTURE UPDATE RESPONSE =====");
-    console.log(JSON.stringify(updateJsonResponse, null, 2));
-
-    console.log("\n===== FINAL RESULT =====");
-    console.log("Successfully completed batch operation");
-    console.log("Widget ID:", widgetId[0]);
-    console.log("Inserted Element ID:", insertedElementId);
 
     return {
       success: true,
-      widgetId: widgetId[0],
-      insertedElementId,
-      batchResponse: jsonResponse,
-      flexStructureUpdateResponse: updateJsonResponse,
+      insertedElements: insertResults.insertedElements,
+      batchResponses: insertResults.batchResponses,
+      flexStructureUpdateResponse: flexUpdateResult.response,
+      error: null,
     };
   } catch (error) {
-    console.error("\nBatch request failed:", error);
+    console.error("Dynamic batch request failed:", error);
     return {
       success: false,
       error: error.message,
-      errorStack: error.stack,
+      insertedElements: [],
+      batchResponses: [],
     };
   }
 }
 
+function generateDynamicIdsForBatch(batchAnalysis) {
+  const dynamicIds = {
+    widgets: [],
+    divs: [],
+    widgetIdMap: new Map(),
+    divIdMap: new Map(),
+  };
+
+  // Generate IDs for each insert element request
+  for (let i = 0; i < batchAnalysis.insertElementCount; i++) {
+    const widgetId = `widget_${generateUniqueId().substring(0, 8)}`;
+    const divId = generateNumericId();
+
+    dynamicIds.widgets.push(widgetId);
+    dynamicIds.divs.push(divId);
+    dynamicIds.widgetIdMap.set(`widgetId${i + 1}`, widgetId);
+    dynamicIds.divIdMap.set(`divId${i + 1}`, divId);
+  }
+
+  return dynamicIds;
+}
+
+async function insertMultipleElements(
+  pageId,
+  alias,
+  section,
+  flexWidgetId,
+  batchRequestBody,
+  dynamicIds
+) {
+  console.log("\n===== INSERTING MULTIPLE ELEMENTS =====");
+
+  const insertElementRequests = batchRequestBody.filter(
+    (req) => req.url && req.url.includes("insertElement")
+  );
+
+  const insertedElements = [];
+  const batchResponses = [];
+
+  for (let i = 0; i < insertElementRequests.length; i++) {
+    const request = insertElementRequests[i];
+    const widgetId = dynamicIds.widgets[i];
+    const divId = dynamicIds.divs[i];
+
+    console.log(`\n--- Inserting Element ${i + 1} ---`);
+    console.log("Widget ID:", widgetId);
+    console.log("Div ID:", divId);
+
+    try {
+      // Prepare the insert request
+      const insertRequest = prepareInsertElementRequest(
+        request,
+        pageId,
+        flexWidgetId,
+        widgetId,
+        divId
+      );
+
+      console.log("Insert Request:", JSON.stringify(insertRequest, null, 2));
+
+      // Execute the insert request
+      const response = await fetch(
+        `${DUDA_API_CONFIG.baseUrl}/uis/batch?op=create%20widget%20in%20flex&dm_device=desktop&currentEditorPageId=${pageId}`,
+        {
+          method: "POST",
+          headers: getBatchHeaders(alias),
+          body: JSON.stringify([insertRequest]),
+        }
+      );
+
+      const responseText = await response.text();
+      console.log(`Insert Response ${i + 1}:`, responseText);
+
+      if (!response.ok) {
+        throw new Error(`Insert failed: ${response.status} ${responseText}`);
+      }
+
+      const jsonResponse = JSON.parse(responseText);
+      batchResponses.push(jsonResponse);
+
+      // Extract the inserted element ID
+      const insertedElementId =
+        extractInsertedElementIdFromResponse(jsonResponse);
+
+      if (insertedElementId) {
+        insertedElements.push({
+          widgetId,
+          divId,
+          insertedElementId,
+          index: i,
+        });
+        console.log(
+          `Successfully inserted element ${i + 1}: ${insertedElementId}`
+        );
+      } else {
+        console.error(`Failed to extract element ID for insert ${i + 1}`);
+      }
+
+      // Small delay between inserts
+      if (i < insertElementRequests.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    } catch (error) {
+      console.error(`Error inserting element ${i + 1}:`, error);
+      // Continue with other elements even if one fails
+    }
+  }
+
+  return {
+    success: insertedElements.length > 0,
+    insertedElements,
+    batchResponses,
+    error:
+      insertedElements.length === 0
+        ? "No elements were successfully inserted"
+        : null,
+  };
+}
+
+function prepareInsertElementRequest(
+  originalRequest,
+  pageId,
+  flexWidgetId,
+  widgetId,
+  divId
+) {
+  const request = {
+    type: "post",
+    url: `/pages/${pageId}/insertElement?dm_batchReqId=${Math.random()
+      .toString(36)
+      .substr(2, 6)}`,
+    data: {
+      markup: originalRequest.data.markup
+        .replace(/widgetId\d+/g, widgetId)
+        .replace(/divId\d+/g, divId),
+      parent: flexWidgetId,
+      before: originalRequest.data.before || null,
+      defaultLocation: originalRequest.data.defaultLocation || false,
+    },
+  };
+
+  return request;
+}
+
+async function updateFlexStructureWithMultipleElements(
+  pageId,
+  uuid,
+  alias,
+  section,
+  flexWidgetId,
+  batchRequestBody,
+  dynamicIds,
+  insertedElements
+) {
+  console.log("\n===== UPDATING FLEX STRUCTURE WITH MULTIPLE ELEMENTS =====");
+
+  const flexStructureRequests = batchRequestBody.filter(
+    (req) => req.url && req.url.includes("flexStructure")
+  );
+
+  if (flexStructureRequests.length === 0) {
+    console.log("No flex structure requests found");
+    return { success: true, response: null };
+  }
+
+  const flexRequest = flexStructureRequests[0];
+
+  try {
+    // Validate the original flex structure data
+    console.log("Validating original flex structure data...");
+    const validatedOriginalData = FlexStructureSchema.parse(flexRequest.data);
+    console.log("✓ Original flex structure validation passed");
+
+    // Prepare the flex structure data with all inserted elements
+    const updatedFlexData = prepareEnhancedFlexStructureData(
+      validatedOriginalData,
+      section,
+      flexWidgetId,
+      dynamicIds,
+      insertedElements
+    );
+
+    console.log("Validating updated flex structure data...");
+    const validatedUpdatedData = FlexStructureSchema.parse(updatedFlexData);
+    console.log("✓ Updated flex structure validation passed");
+
+    console.log(
+      "Final Flex Structure Data:",
+      JSON.stringify(validatedUpdatedData, null, 2)
+    );
+
+    const flexUpdateRequest = {
+      type: "put",
+      url: `/pages/${uuid}/flexStructure?dm_batchReqId=${Math.random()
+        .toString(36)
+        .substr(2, 6)}`,
+      data: validatedUpdatedData,
+    };
+
+    const response = await fetch(
+      `${DUDA_API_CONFIG.baseUrl}/uis/batch?op=update%20flex%20structure&dm_device=desktop&currentEditorPageId=${pageId}`,
+      {
+        method: "POST",
+        headers: getBatchHeaders(alias),
+        body: JSON.stringify([flexUpdateRequest]),
+      }
+    );
+
+    const responseText = await response.text();
+    console.log("Flex Structure Update Response:", responseText);
+
+    if (!response.ok) {
+      // Try to parse the error response for more details
+      let errorDetails = responseText;
+      try {
+        const errorJson = JSON.parse(responseText);
+        errorDetails = errorJson.message || errorJson.error_code || responseText;
+      } catch (e) {
+        // Response is not JSON, use as-is
+      }
+      
+      throw new Error(
+        `Flex structure update failed: ${response.status} - ${errorDetails}`
+      );
+    }
+
+    return {
+      success: true,
+      response: JSON.parse(responseText),
+    };
+  } catch (error) {
+    console.error("Error updating flex structure:", error);
+    
+    // If it's a Zod validation error, provide more detailed information
+    if (error.name === 'ZodError') {
+      console.error("Zod validation errors:", error.errors);
+      return {
+        success: false,
+        error: `Validation failed: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
+        response: null,
+      };
+    }
+    
+    return {
+      success: false,
+      error: error.message,
+      response: null,
+    };
+  }
+}
+
+function prepareEnhancedFlexStructureData(
+  originalData,
+  section,
+  flexWidgetId,
+  dynamicIds,
+  insertedElements
+) {
+  console.log("\n===== PREPARING ENHANCED FLEX STRUCTURE DATA =====");
+
+  // Deep clone the original data to avoid mutations
+  const flexData = JSON.parse(JSON.stringify(originalData));
+
+  // Helper function to safely replace IDs in strings
+  const replaceIds = (obj) => {
+    if (typeof obj === "string") {
+      let result = obj;
+      
+      // Replace section-related IDs
+      if (flexWidgetId && obj.includes("flexWidgetId")) {
+        result = result.replace(/flexWidgetId/g, flexWidgetId);
+      }
+      
+      // Replace section IDs with proper null checks
+      const sectionReplacements = {
+        'section.elementId': section.elementId || section.sectionId,
+        'section.sectionId': section.sectionId,
+        'section.gridId': section.gridId,
+        'section.parentGroupId': section.parentGroupId,
+        'section.childGroup1Id': section.childGroup1Id,
+        'section.childGroup2Id': section.childGroup2Id,
+      };
+      
+      for (const [placeholder, replacement] of Object.entries(sectionReplacements)) {
+        if (replacement && result.includes(placeholder)) {
+          result = result.replace(new RegExp(placeholder, 'g'), replacement);
+        }
+      }
+
+      // Replace dynamic widget and div IDs
+      dynamicIds.widgetIdMap.forEach((realId, placeholder) => {
+        if (result.includes(placeholder)) {
+          result = result.replace(new RegExp(placeholder, 'g'), realId);
+        }
+      });
+
+      dynamicIds.divIdMap.forEach((realId, placeholder) => {
+        if (result.includes(placeholder)) {
+          result = result.replace(new RegExp(placeholder, 'g'), realId);
+        }
+      });
+
+      return result;
+    }
+
+    if (Array.isArray(obj)) {
+      return obj.map(replaceIds);
+    }
+
+    if (obj && typeof obj === "object") {
+      const newObj = {};
+      for (const [key, value] of Object.entries(obj)) {
+        const newKey = replaceIds(key);
+        newObj[newKey] = replaceIds(value);
+      }
+      return newObj;
+    }
+
+    return obj;
+  };
+
+  const processedData = replaceIds(flexData);
+
+  // Update externalIds for inserted elements
+  if (processedData.elements && insertedElements.length > 0) {
+    insertedElements.forEach((element) => {
+      if (processedData.elements[element.widgetId] && element.insertedElementId) {
+        processedData.elements[element.widgetId].externalId = element.insertedElementId;
+        console.log(
+          `Updated widget ${element.widgetId} with externalId: ${element.insertedElementId}`
+        );
+      }
+    });
+  }
+
+  // Ensure all required fields are present and valid
+  if (!processedData.id) {
+    processedData.id = section.sectionId || generateUniqueId();
+  }
+
+  if (!processedData.rootContainerId) {
+    processedData.rootContainerId = section.sectionId;
+  }
+
+  // Validate parent-child relationships
+  if (processedData.elements) {
+    Object.keys(processedData.elements).forEach(elementId => {
+      const element = processedData.elements[elementId];
+      
+      // Ensure parentId is properly formatted
+      if (element.parentId && Array.isArray(element.parentId) && element.parentId.length === 1) {
+        element.parentId = element.parentId[0];
+      }
+      
+      // Ensure children array exists
+      if (!element.children) {
+        element.children = [];
+      }
+      
+      // Ensure data object exists
+      if (!element.data) {
+        element.data = {};
+      }
+      
+      // Ensure customClassName exists
+      if (element.customClassName === undefined) {
+        element.customClassName = "";
+      }
+      
+      // Ensure name exists
+      if (element.name === undefined) {
+        element.name = "";
+      }
+    });
+  }
+
+  return processedData;
+}
+
+// Keep the existing helper functions
 function extractInsertedElementIdFromResponse(responseData) {
   if (!responseData) {
     console.log("No response data provided");
@@ -330,31 +714,23 @@ function extractInsertedElementIdFromResponse(responseData) {
 
   try {
     console.log("Extracting element ID from response...");
-    console.log("Response type:", typeof responseData);
-    console.log("Response keys:", Object.keys(responseData));
 
-    // Handle different response structures
     let elementHtml = null;
 
-    // Check if response is an object with URL keys (like your example)
+    // Handle different response structures
     if (typeof responseData === "object" && !Array.isArray(responseData)) {
-      // Look for insertElement response
       const insertElementKey = Object.keys(responseData).find((key) =>
         key.includes("insertElement")
       );
 
       if (insertElementKey) {
-        console.log("Found insertElement response key:", insertElementKey);
         const insertData = responseData[insertElementKey];
-
         if (insertData && insertData.element) {
           elementHtml = insertData.element;
-          console.log("Found element HTML in insertElement response");
         }
       }
     }
 
-    // If it's an array, look for the insertElement response
     if (Array.isArray(responseData)) {
       const insertResponse = responseData.find(
         (item) => item.url && item.url.includes("insertElement")
@@ -366,18 +742,14 @@ function extractInsertedElementIdFromResponse(responseData) {
         insertResponse.data.element
       ) {
         elementHtml = insertResponse.data.element;
-        console.log("Found element HTML in array response");
       }
     }
 
-    // Try direct access for other structures
     if (!elementHtml) {
       if (responseData.element) {
         elementHtml = responseData.element;
-        console.log("Found element HTML in direct response");
       } else if (responseData.data && responseData.data.element) {
         elementHtml = responseData.data.element;
-        console.log("Found element HTML in data.element");
       }
     }
 
@@ -390,17 +762,14 @@ function extractInsertedElementIdFromResponse(responseData) {
 
     // Parse the HTML to extract the ID
     const $ = cheerio.load(elementHtml);
-
-    // Look for any element with an ID that looks like what we need
     let elementId = null;
 
-    // Try different selectors
     const selectors = [
-      "div[id]", // Any div with an ID
-      "[id]", // Any element with an ID
-      "div.dmNewParagraph[id]", // Specific class with ID
-      "div[duda_id]", // duda_id attribute
-      "[data-element-id]", // data-element-id attribute
+      "div[id]",
+      "[id]",
+      "div.dmNewParagraph[id]",
+      "div[duda_id]",
+      "[data-element-id]",
     ];
 
     for (const selector of selectors) {
@@ -422,7 +791,6 @@ function extractInsertedElementIdFromResponse(responseData) {
       }
     }
 
-    // If we still don't have an ID, try to extract from any attribute
     if (!elementId) {
       $("*").each((i, element) => {
         const $el = $(element);
@@ -430,7 +798,7 @@ function extractInsertedElementIdFromResponse(responseData) {
         if (id && id.length > 0) {
           elementId = id;
           console.log("Found ID from general search:", elementId);
-          return false; // break the loop
+          return false;
         }
       });
     }
@@ -440,359 +808,11 @@ function extractInsertedElementIdFromResponse(responseData) {
       return elementId;
     } else {
       console.log("No element ID found in HTML");
-      console.log("HTML structure:", elementHtml);
       return null;
     }
   } catch (error) {
     console.error("Error extracting inserted element ID from response:", error);
-    console.error("Response data:", responseData);
     return null;
-  }
-}
-
-function updateFlexStructureWithElementId(
-  batchData,
-  widgetId,
-  insertedElementId
-) {
-  console.log("\n===== UPDATING FLEX STRUCTURE =====");
-  console.log("Widget ID:", widgetId);
-  console.log("Inserted Element ID:", insertedElementId);
-
-  try {
-    return batchData.map((request) => {
-      if (request.url.includes("flexStructure")) {
-        console.log("Processing flexStructure request...");
-        const flexData = JSON.parse(JSON.stringify(request.data));
-
-        // If the flex data is a string, parse it first
-        let flexDataObj =
-          typeof flexData === "string" ? JSON.parse(flexData) : flexData;
-
-        // Enhanced widget update logic
-        if (flexDataObj.elements) {
-          console.log(
-            "Available elements in structure:",
-            Object.keys(flexDataObj.elements)
-          );
-
-          // Strategy 1: Find by exact widget ID match
-          if (flexDataObj.elements[widgetId]) {
-            console.log(`Found exact widget match: ${widgetId}`);
-            flexDataObj.elements[widgetId].externalId = insertedElementId;
-            console.log(
-              `Updated widget ${widgetId} with externalId: ${insertedElementId}`
-            );
-          } else {
-            console.log(
-              `Widget ${widgetId} not found in elements, searching by properties...`
-            );
-
-            // Strategy 2: Find by widget properties
-            Object.keys(flexDataObj.elements).forEach((elementKey) => {
-              const element = flexDataObj.elements[elementKey];
-
-              // Check if this is a widget_wrapper of type paragraph
-              if (
-                element.type === "widget_wrapper" &&
-                element.data &&
-                element.data["data-widget-type"] === "paragraph"
-              ) {
-                // Additional checks for better matching
-                const hasNoExternalId = !element.externalId;
-                const hasPlaceholderExternalId =
-                  element.externalId === "div[id]";
-                const nameMatches = element.name === "Text Block";
-
-                if (
-                  hasNoExternalId ||
-                  hasPlaceholderExternalId ||
-                  nameMatches
-                ) {
-                  console.log(
-                    `Updating paragraph widget ${elementKey} with externalId: ${insertedElementId}`
-                  );
-                  element.externalId = insertedElementId;
-                }
-              }
-            });
-          }
-        }
-
-        // Legacy support: also check for 'widgets' property
-        if (flexDataObj.widgets) {
-          console.log(
-            "Available widgets in structure:",
-            Object.keys(flexDataObj.widgets)
-          );
-
-          // First, try to find the specific widget by ID
-          if (flexDataObj.widgets[widgetId]) {
-            console.log(
-              `Found and updating specific widget ${widgetId} with externalId ${insertedElementId}`
-            );
-            flexDataObj.widgets[widgetId].externalId = insertedElementId;
-          } else {
-            console.log(
-              `Widget ${widgetId} not found in widgets, searching by properties...`
-            );
-
-            // If the specific widget ID doesn't exist, find by properties
-            Object.keys(flexDataObj.widgets).forEach((key) => {
-              const widget = flexDataObj.widgets[key];
-
-              // Check if this is a text block widget that matches our criteria
-              if (
-                widget.type === "widget_wrapper" &&
-                widget.data &&
-                widget.data["data-widget-type"] === "paragraph" &&
-                (!widget.externalId || widget.externalId === "div[id]")
-              ) {
-                console.log(
-                  `Updating text block widget ${key} with externalId ${insertedElementId}`
-                );
-                widget.externalId = insertedElementId;
-              }
-            });
-          }
-        }
-
-        // Convert back to string if it was originally a string
-        const updatedData =
-          typeof flexData === "string"
-            ? JSON.stringify(flexDataObj)
-            : flexDataObj;
-
-        console.log("Updated flex structure:");
-        console.log(JSON.stringify(updatedData, null, 2));
-
-        return {
-          ...request,
-          data: updatedData,
-        };
-      }
-      return request;
-    });
-  } catch (error) {
-    console.error("Error updating flex structure with element ID:", error);
-    return batchData;
-  }
-}
-
-// Helper function to manually update a flex structure object
-function updateFlexStructureObject(flexStructure, widgetId, insertedElementId) {
-  console.log("\n===== MANUAL FLEX STRUCTURE UPDATE =====");
-  console.log("Widget ID:", widgetId);
-  console.log("Inserted Element ID:", insertedElementId);
-
-  try {
-    // Create a deep copy to avoid mutating the original
-    const updatedStructure = JSON.parse(JSON.stringify(flexStructure));
-
-    // Check if we have elements property (newer structure)
-    if (updatedStructure.elements) {
-      // Strategy 1: Direct ID match
-      if (updatedStructure.elements[widgetId]) {
-        console.log(`Direct match found for widget: ${widgetId}`);
-        updatedStructure.elements[widgetId].externalId = insertedElementId;
-      } else {
-        // Strategy 2: Find by widget type and properties
-        Object.keys(updatedStructure.elements).forEach((elementKey) => {
-          const element = updatedStructure.elements[elementKey];
-
-          if (
-            element.type === "widget_wrapper" &&
-            element.data &&
-            element.data["data-widget-type"] === "paragraph"
-          ) {
-            // Check if this widget needs an externalId update
-            const needsUpdate =
-              !element.externalId ||
-              element.externalId === "div[id]" ||
-              element.name === "Text Block";
-
-            if (needsUpdate) {
-              console.log(
-                `Updating widget ${elementKey} with externalId: ${insertedElementId}`
-              );
-              element.externalId = insertedElementId;
-            }
-          }
-        });
-      }
-    }
-
-    console.log("Flex structure updated successfully");
-    return updatedStructure;
-  } catch (error) {
-    console.error("Error in manual flex structure update:", error);
-    return flexStructure;
-  }
-}
-
-// Example usage with your specific structure
-function updateSpecificWidget(flexStructure, extractedElementId) {
-  const updatedStructure = JSON.parse(JSON.stringify(flexStructure));
-
-  // Update the specific widget_pn5tn1
-  if (updatedStructure.elements && updatedStructure.elements["widget_pn5tn1"]) {
-    updatedStructure.elements["widget_pn5tn1"].externalId = extractedElementId;
-    console.log(`Updated widget_pn5tn1 with externalId: ${extractedElementId}`);
-  }
-
-  return updatedStructure;
-}
-
-// Debug function to check what widgets are available
-function debugFlexStructure(flexStructure) {
-  console.log("\n===== FLEX STRUCTURE DEBUG =====");
-
-  if (flexStructure.elements) {
-    console.log("Elements found:");
-    Object.keys(flexStructure.elements).forEach((key) => {
-      const element = flexStructure.elements[key];
-      console.log(`- ${key}: ${element.type} ${element.name || ""}`);
-
-      if (element.type === "widget_wrapper") {
-        console.log(`  * Widget Type: ${element.data["data-widget-type"]}`);
-        console.log(`  * External ID: ${element.externalId || "none"}`);
-      }
-    });
-  }
-
-  if (flexStructure.widgets) {
-    console.log("Widgets found:");
-    Object.keys(flexStructure.widgets).forEach((key) => {
-      const widget = flexStructure.widgets[key];
-      console.log(`- ${key}: ${widget.type} ${widget.name || ""}`);
-    });
-  }
-}
-
-export {
-  updateFlexStructureWithElementId,
-  updateFlexStructureObject,
-  updateSpecificWidget,
-  debugFlexStructure,
-};
-
-export async function testBatchRequest(pageId, uuid, alias, batchRequestBody) {
-  console.log("\n===== TESTING BATCH REQUEST =====");
-
-  try {
-    const response = await fetch(
-      `${DUDA_API_CONFIG.baseUrl}/uis/batch?op=create%20widget%20in%20flex&dm_device=desktop&currentEditorPageId=${pageId}`,
-      {
-        method: "POST",
-        headers: getBatchHeaders(alias),
-        body: JSON.stringify(batchRequestBody),
-      }
-    );
-
-    console.log("Raw Response:", response);
-    console.log("Response Status:", response.status);
-    console.log("Response OK:", response.ok);
-    console.log(
-      "Response Headers:",
-      Object.fromEntries(response.headers.entries())
-    );
-
-    const responseText = await response.text();
-    console.log("\n===== RESPONSE BODY =====");
-    console.log(responseText);
-    console.log("========================");
-
-    if (!response.ok) {
-      console.error("Error Response Text:", responseText);
-      throw new Error(`HTTP ${response.status}: ${responseText}`);
-    }
-
-    const jsonResponse = JSON.parse(responseText);
-    console.log("JSON Response:", JSON.stringify(jsonResponse, null, 2));
-
-    return {
-      success: true,
-      response: jsonResponse,
-      status: response.status,
-      headers: Object.fromEntries(response.headers.entries()),
-    };
-  } catch (error) {
-    console.error("Test Batch Request Error:", error);
-    return {
-      success: false,
-      error: error.message,
-      stack: error.stack,
-    };
-  }
-}
-
-function prepareBatchRequestData(
-  batchRequestBody,
-  pageId,
-  uuid,
-  section,
-  flexWidgetId,
-  widgetId,
-  divId
-) {
-  try {
-    console.log("\n===== PREPARING BATCH REQUEST DATA =====");
-    console.log("Widget ID being used:", widgetId[0]);
-    console.log("Div ID being used:", divId[0]);
-
-    const preparedBatch = batchRequestBody.map((request, index) => {
-      const preparedRequest = { ...request };
-
-      if (request.url.includes("insertElement")) {
-        preparedRequest.url = `/pages/${pageId}/insertElement?dm_batchReqId=${Math.random()
-          .toString(36)
-          .substr(2, 6)}`;
-
-        const currentWidgetId = widgetId[index] || widgetId[0];
-        const currentDivId = divId[index] || divId[0];
-
-        let processedMarkup = request.data.markup
-          .replace(/widgetId\d+/g, currentWidgetId)
-          .replace(/divId\d+/g, currentDivId);
-
-        preparedRequest.data = {
-          ...request.data,
-          markup: processedMarkup,
-          parent: flexWidgetId,
-          before: request.data.before || null,
-          defaultLocation: request.data.defaultLocation || false,
-        };
-
-        console.log("Prepared insertElement request:");
-        console.log("- URL:", preparedRequest.url);
-        console.log("- Markup:", processedMarkup);
-        console.log("- Parent:", flexWidgetId);
-      } else if (request.url.includes("flexStructure")) {
-        preparedRequest.url = `/pages/${uuid}/flexStructure?dm_batchReqId=${Math.random()
-          .toString(36)
-          .substr(2, 6)}`;
-
-        preparedRequest.data = prepareFlexStructureData(
-          request.data,
-          section,
-          flexWidgetId,
-          widgetId,
-          divId
-        );
-
-        console.log("Prepared flexStructure request:");
-        console.log("- URL:", preparedRequest.url);
-        console.log("- Data type:", typeof preparedRequest.data);
-      }
-
-      return preparedRequest;
-    });
-
-    console.log("Prepared batch data with", preparedBatch.length, "requests");
-    return preparedBatch;
-  } catch (error) {
-    console.error("Error preparing batch request data:", error);
-    throw error;
   }
 }
 
@@ -800,8 +820,6 @@ function getBatchHeaders(alias) {
   return {
     accept: "*/*",
     "accept-language": "en-US,en;q=0.9",
-    baggage:
-      "sentry-environment=direct,sentry-release=production_5597,sentry-public_key=0d2f170da99ddd8d3befc10a7f4ddd29,sentry-trace_id=5e3b70ae9493483691dca5d1897fca5a,sentry-sampled=true,sentry-sample_rand=0.02876794153772788,sentry-sample_rate=0.1",
     "content-type": "application/json",
     dm_loc: "/home/site/41e002a2/duda1",
     dsid: "1048635",
@@ -815,7 +833,6 @@ function getBatchHeaders(alias) {
     "sec-fetch-dest": "empty",
     "sec-fetch-mode": "cors",
     "sec-fetch-site": "same-origin",
-    "sentry-trace": "5e3b70ae9493483691dca5d1897fca5a-86434ec1efb872a1-1",
     "user-agent":
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
     "x-requested-with": "XMLHttpRequest",
@@ -825,74 +842,9 @@ function getBatchHeaders(alias) {
   };
 }
 
-function prepareFlexStructureData(
-  originalData,
-  section,
-  flexWidgetId,
-  widgetId,
-  divId
-) {
-  try {
-    const flexData = JSON.parse(JSON.stringify(originalData));
-
-    const replaceIds = (obj) => {
-      if (typeof obj === "string") {
-        let result = obj
-          .replace(/flexWidgetId/g, flexWidgetId)
-          .replace(
-            /section\.elementId/g,
-            section.elementId || "section.elementId"
-          )
-          .replace(
-            /section\.sectionId/g,
-            section.sectionId || "section.sectionId"
-          )
-          .replace(/section\.gridId/g, section.gridId || "section.gridId")
-          .replace(
-            /section\.parentGroupId/g,
-            section.parentGroupId || "section.parentGroupId"
-          )
-          .replace(
-            /section\.childGroup1Id/g,
-            section.childGroup1Id || "section.childGroup1Id"
-          )
-          .replace(
-            /section\.childGroup2Id/g,
-            section.childGroup2Id || "section.childGroup2Id"
-          );
-
-        widgetId.forEach((id, index) => {
-          result = result.replace(new RegExp(`widgetId${index + 1}`, "g"), id);
-        });
-
-        divId.forEach((id, index) => {
-          result = result.replace(new RegExp(`divId${index + 1}`, "g"), id);
-        });
-
-        return result;
-      }
-
-      if (Array.isArray(obj)) {
-        return obj.map(replaceIds);
-      }
-
-      if (obj && typeof obj === "object") {
-        const newObj = {};
-        for (const [key, value] of Object.entries(obj)) {
-          newObj[replaceIds(key)] = replaceIds(value);
-        }
-        return newObj;
-      }
-
-      return obj;
-    };
-
-    const processedData = replaceIds(flexData);
-
-    return processedData;
-  } catch (error) {
-    console.error("Error preparing flex structure data:", error);
-    throw error;
-  }
-}
-
+// Export the enhanced functions
+export {
+  analyzeBatchRequestBody,
+  generateDynamicIdsForBatch,
+  prepareEnhancedFlexStructureData,
+};

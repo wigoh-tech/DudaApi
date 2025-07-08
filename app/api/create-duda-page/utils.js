@@ -12,20 +12,6 @@ export function extractDivId(htmlString) {
   return dudaIdMatch ? dudaIdMatch[1] : null;
 }
 
-export async function withRetry(operation, maxRetries = 1, delayMs = 1000) {
-  let attempt = 0;
-  while (true) {
-    try {
-      return await operation();
-    } catch (error) {
-      attempt++;
-      if (attempt >= maxRetries) {
-        throw error; // Just throw the original error without wrapping
-      }
-      await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
-    }
-  }
-}
 
 export function handleError(error) {
   console.error("Error:", error);
