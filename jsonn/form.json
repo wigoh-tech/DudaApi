@@ -1,16 +1,6 @@
 [
   {
     "type": "post",
-    "url": "/pages/REPLACE_PAGE_ID/insertElement?dm_batchReqId=REPLACE_BATCH_ID_1",
-    "data": {
-      "markup": "<div class=\"dmNewParagraph\" data-dmtmpl=\"true\" data-element-type=\"paragraph\" data-version=\"5\"><h1><span style=\"display: unset;\">New Title</span></h1></div>",
-      "parent": "flexWidgetId",
-      "before": null,
-      "defaultLocation": false
-    }
-  },
-  {
-    "type": "post",
     "url": "/pages/REPLACE_PAGE_ID/insertElement?dm_batchReqId=REPLACE_BATCH_ID_2",
     "data": {
       "markup": "<div class=\"dmNewParagraph\" data-dmtmpl=\"true\" data-element-type=\"paragraph\" data-version=\"5\"><p class=\"text-align-left m-text-align-center\"><span style=\"display: unset;\">Home</span></p></div>",
@@ -21,9 +11,19 @@
   },
   {
     "type": "post",
+    "url": "/pages/REPLACE_PAGE_ID/insertElement?dm_batchReqId=REPLACE_BATCH_ID_1",
+    "data": {
+      "markup": "<div class=\"dmNewParagraph\" data-dmtmpl=\"true\" data-element-type=\"paragraph\" data-version=\"5\"><h1><span style=\"display: unset;\">Experience luxury dining like never before.</span></h1></div>",
+      "parent": "flexWidgetId",
+      "before": null,
+      "defaultLocation": false
+    }
+  },
+  {
+    "type": "post",
     "url": "/pages/REPLACE_PAGE_ID/insertElement?dm_batchReqId=REPLACE_BATCH_ID_3",
     "data": {
-      "markup": "<div class=\"dmNewParagraph\" data-dmtmpl=\"true\" data-element-type=\"paragraph\" data-version=\"5\"><h1><span style=\"display: unset;\">New Title for Section 1</span></h1></div>",
+      "markup": "<div class=\"dmNewParagraph\" data-dmtmpl=\"true\" data-element-type=\"paragraph\" data-version=\"5\"><h1><span style=\"display: unset;\">MILESTONES</span></h1></div>",
       "parent": "flexWidgetId",
       "before": null,
       "defaultLocation": false
@@ -33,7 +33,7 @@
     "type": "post",
     "url": "/pages/REPLACE_PAGE_ID/insertElement?dm_batchReqId=REPLACE_BATCH_ID_4",
     "data": {
-      "markup": "<div class=\"dmNewParagraph\" data-dmtmpl=\"true\" data-element-type=\"paragraph\" data-version=\"5\"><p class=\"text-align-left m-text-align-center\"><span style=\"display: unset;\">Additional content for section 1</span></p></div>",
+      "markup": "<div class=\"dmNewParagraph\" data-dmtmpl=\"true\" data-element-type=\"paragraph\" data-version=\"5\"><p class=\"text-align-left m-text-align-center\"><span style=\"display: unset;\">Whether it’s an intimate dinner or a grand celebration, luxury dining at Baillotte is an experience that transcends expectations.</span></p></div>",
       "parent": "flexWidgetId",
       "before": null,
       "defaultLocation": false
@@ -43,7 +43,7 @@
     "type": "post",
     "url": "/pages/REPLACE_PAGE_ID/insertElement?dm_batchReqId=1c72af",
     "data": {
-      "markup": "<div class=\"dmNewParagraph\" data-dmtmpl=\"true\" data-element-type=\"paragraph\" data-version=\"5\" id=\"4174267716\"><p class=\"text-align-right m-text-align-center\"><span style=\"display: unset;\">This is paragraph text. Click it or hit the Manage Text button to change the font, color, size, format, and more. To set up site-wide paragraph and title styles, go to Site Theme.</span></p></div>",
+      "markup": "<div class=\"dmNewParagraph\" data-dmtmpl=\"true\" data-element-type=\"paragraph\" data-version=\"5\" id=\"4174267716\"><p class=\"text-align-right m-text-align-center\"><span style=\"display: unset;\">Immerse yourself in a world where culinary artistry meets unparalleled elegance. At Baillotte, every detail is crafted to perfection—from the thoughtfully curated menu inspired by Nordic traditions to the sophisticated ambiance of our dining room. Indulge in dishes that celebrate the harmony of nature, innovation, and flavor, paired with world-class service that turns every meal into an unforgettable journey. </span></p></div>",
       "parent": "flexWidgetId",
       "before": null,
       "defaultLocation": false
@@ -106,7 +106,7 @@
           "type": "group",
           "id": "section.childGroup2Id",
           "parentId": ["section.parentGroupId"],
-          "children": ["widgetId3", "widgetId4", "widgetID5"],
+          "children": ["widgetId3", "widgetId4", "widgetId5"],
           "name": "",
           "data": {},
           "customClassName": ""
@@ -126,7 +126,7 @@
         "widgetId2": {
           "type": "widget_wrapper",
           "id": "widgetId2",
-          "parentId": " section.childGroup1Id",
+          "parentId": "section.childGroup1Id",
           "children": [],
           "name": "Home Link",
           "data": {
