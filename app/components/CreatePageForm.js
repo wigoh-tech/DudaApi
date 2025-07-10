@@ -8,7 +8,8 @@ export default function CreatePageForm() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [pageId, setPageId] = useState("");
-  const [batchRequestBody, setBatchRequestBody] = useState(""); // New state for batch request body
+  const [primaryBatchBody, setPrimaryBatchBody] = useState(""); 
+  const [secondaryBatchBody, setSecondaryBatchBody] = useState(""); 
 
   const createDudaPage = async (pageData) => {
     try {
@@ -51,31 +52,55 @@ export default function CreatePageForm() {
     setPageId("");
 
     try {
-      // Validate batch request body
-      let parsedBatchRequest;
-      try {
-        parsedBatchRequest = JSON.parse(batchRequestBody);
-        if (!Array.isArray(parsedBatchRequest)) {
-          throw new Error("Batch request must be a JSON array");
+      // Validate and parse both batch request bodies
+      let parsedPrimaryBatch = [];
+      let parsedSecondaryBatch = [];
+
+      // Parse primary batch request body
+      if (primaryBatchBody.trim()) {
+        try {
+          parsedPrimaryBatch = JSON.parse(primaryBatchBody);
+          if (!Array.isArray(parsedPrimaryBatch)) {
+            throw new Error("Primary batch request must be a JSON array");
+          }
+        } catch (e) {
+          throw new Error("Invalid primary batch request JSON: " + e.message);
         }
-      } catch (e) {
-        throw new Error("Invalid batch request JSON: " + e.message);
       }
 
+      // Parse secondary batch body if provided
+      if (secondaryBatchBody.trim()) {
+        try {
+          parsedSecondaryBatch = JSON.parse(secondaryBatchBody);
+          if (!Array.isArray(parsedSecondaryBatch)) {
+            throw new Error("Secondary batch request must be a JSON array");
+          }
+        } catch (e) {
+          throw new Error("Invalid secondary batch request JSON: " + e.message);
+        }
+      }
+
+      // Validate that at least one batch request body is provided
+      if (parsedPrimaryBatch.length === 0 && parsedSecondaryBatch.length === 0) {
+        throw new Error("At least one batch request body must be provided");
+      }
+
+      // Send both batch bodies to the backend
       const result = await createDudaPage({
         pageTitle: pageTitle,
         pageUrl: `http://bfs._dudamobile.com/${pageTitle
           .toLowerCase()
           .replace(/\s+/g, "-")}`,
         templateName: "876004f8b5a14e25883e6e0af818572d~home",
-        batchRequestBody: parsedBatchRequest,
+        primaryBatchBody: parsedPrimaryBatch,
+        secondaryBatchBody: parsedSecondaryBatch,
       });
 
       const extractedPageId =
         result.pageId || result.id || result.page?.id || "Page ID not found";
       setPageId(extractedPageId);
 
-      setMessage(`Page "${pageTitle}" created successfully!`);
+      setMessage(`Page "${pageTitle}" created successfully with section-by-section batch execution!`);
       setPageTitle("");
       console.log("Success result:", result);
     } catch (error) {
@@ -87,9 +112,9 @@ export default function CreatePageForm() {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-lg shadow-md">
+    <div className="max-w-2xl mx-auto mt-8 p-6 bg-white rounded-lg shadow-md">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">
-        Create Duda Page
+        Create Duda Page with Section-by-Section Batch Execution
       </h2>
 
       <div className="space-y-4">
@@ -113,27 +138,46 @@ export default function CreatePageForm() {
 
         <div>
           <label
-            htmlFor="batchRequestBody"
+            htmlFor="primaryBatchBody"
             className="block text-sm font-medium text-gray-700 mb-2"
           >
-            Batch Request Body (JSON)
+            Primary Batch Request Body (JSON Array)
           </label>
           <textarea
-            id="batchRequestBody"
-            value={batchRequestBody}
-            onChange={(e) => setBatchRequestBody(e.target.value)}
-            placeholder="Paste your batch request JSON here"
-            rows={10}
+            id="primaryBatchBody"
+            value={primaryBatchBody}
+            onChange={(e) => setPrimaryBatchBody(e.target.value)}
+            placeholder="Paste your primary batch request JSON array here"
+            rows={8}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            This batch will be executed first for each section
+          </p>
+        </div>
+
+        <div>
+          <label
+            htmlFor="secondaryBatchBody"
+            className="block text-sm font-medium text-gray-700 mb-2"
+          >
+            Secondary Batch Request Body (JSON Array)
+          </label>
+          <textarea
+            id="secondaryBatchBody"
+            value={secondaryBatchBody}
+            onChange={(e) => setSecondaryBatchBody(e.target.value)}
+            placeholder="Paste your secondary batch request JSON array here"
+            rows={8}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
           />
         </div>
-
         <button
           onClick={handleSubmit}
-          disabled={loading || !pageTitle.trim() || !batchRequestBody.trim()}
+          disabled={loading || !pageTitle.trim() || (!primaryBatchBody.trim() && !secondaryBatchBody.trim())}
           className="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? "Creating Page..." : "Create Page"}
+          {loading ? "Creating Page..." : "Create Page with Sequential Batch Execution"}
         </button>
       </div>
 

@@ -1,4 +1,4 @@
-// Enhanced batchOperations.js with dynamic section processing based on batch request bodies
+// Enhanced batchOperations.js with Zod validation and improved error handling - FIXED VERSION
 import { z } from "zod";
 import { DUDA_API_CONFIG } from "../../../lib/dudaApi";
 import { generateUniqueId, generateNumericId } from "./utils";
@@ -71,7 +71,7 @@ export async function executeBatchOperations(
   extractedIds,
   htmlIds,
   flexWidgetIds,
-  batchRequestBodies // Now expects an array of batch request bodies
+  batchRequestBody
 ) {
   console.log("\n===== STARTING ENHANCED BATCH OPERATIONS =====");
   console.log("Initial Parameters:");
@@ -81,49 +81,53 @@ export async function executeBatchOperations(
   console.log("- Extracted IDs Count:", extractedIds.length);
   console.log("- HTML IDs Count:", htmlIds.length);
   console.log("- Flex Widget IDs Count:", flexWidgetIds.length);
-  console.log("- Batch Request Bodies Count:", Array.isArray(batchRequestBodies) ? batchRequestBodies.length : 'Not an array');
+  console.log("- Batch Request Body Type:", typeof batchRequestBody);
 
-  // Validate and normalize batch request bodies
-  const normalizedBatchBodies = normalizeBatchRequestBodies(batchRequestBodies);
-  const sectionsToProcess = Math.min(normalizedBatchBodies.length, extractedIds.length);
-  
-  console.log("- Sections to Process:", sectionsToProcess);
-
-  // Validate input parameters
-  if (sectionsToProcess === 0) {
-    throw new Error("No valid batch request bodies or extracted IDs provided");
+  // Validate input parameters with more lenient validation
+  try {
+    z.array(BatchRequestSchema).parse(batchRequestBody);
+    console.log("✓ Batch request body validation passed");
+  } catch (error) {
+    console.error("✗ Batch request body validation failed:", error.errors);
+    // Don't throw here, just log and continue with a warning
+    console.warn("Continuing with potentially invalid batch request body");
   }
+
+  // Validate batchRequestBody
+  if (
+    !batchRequestBody ||
+    !Array.isArray(batchRequestBody) ||
+    batchRequestBody.length === 0
+  ) {
+    throw new Error(
+      "Batch request body is required and must be a non-empty array"
+    );
+  }
+
+  // Analyze the batch request body to understand the structure
+  const batchAnalysis = analyzeBatchRequestBody(batchRequestBody);
+  console.log("\n===== BATCH REQUEST ANALYSIS =====");
+  console.log("Analysis:", JSON.stringify(batchAnalysis, null, 2));
 
   const batchResults = [];
 
-  // Process each section with its corresponding batch request body
-  for (let i = 0; i < sectionsToProcess; i++) {
+  for (let i = 0; i < extractedIds.length; i++) {
     const section = extractedIds[i];
     const htmlId = htmlIds[i];
     const flexWidgetId = flexWidgetIds[i];
-    const batchRequestBody = normalizedBatchBodies[i];
 
     console.log(`\n===== PROCESSING SECTION ${i + 1} =====`);
     console.log("Section Details:", section);
     console.log("HTML ID:", htmlId);
     console.log("Flex Widget ID:", flexWidgetId);
-    console.log("Batch Request Body Operations:", batchRequestBody.length);
 
-    // Validate the current batch request body
-    try {
-      z.array(BatchRequestSchema).parse(batchRequestBody);
-      console.log("✓ Batch request body validation passed");
-    } catch (error) {
-      console.error("✗ Batch request body validation failed:", error.errors);
-      console.warn("Continuing with potentially invalid batch request body");
-    }
-
-    // Validate section IDs
+    // More lenient section validation
     try {
       SectionIdsSchema.parse(section);
       console.log("✓ Section IDs validation passed");
     } catch (error) {
       console.error("✗ Section IDs validation failed:", error.errors);
+      // Continue with a warning instead of failing
       console.warn("Continuing with potentially invalid section IDs");
     }
 
@@ -146,7 +150,7 @@ export async function executeBatchOperations(
         section,
         flexWidgetId,
         batchRequestBody,
-        analyzeBatchRequestBody(batchRequestBody)
+        batchAnalysis
       );
 
       batchResults.push({
@@ -161,7 +165,7 @@ export async function executeBatchOperations(
       });
 
       // Add delay between sections
-      if (i < sectionsToProcess - 1) {
+      if (i < extractedIds.length - 1) {
         console.log("\n--- Adding delay before next section ---");
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
@@ -190,34 +194,6 @@ export async function executeBatchOperations(
   );
 
   return batchResults;
-}
-
-// NEW: Function to normalize batch request bodies input
-function normalizeBatchRequestBodies(batchRequestBodies) {
-  console.log("\n===== NORMALIZING BATCH REQUEST BODIES =====");
-  
-  // Handle different input formats
-  if (!batchRequestBodies) {
-    console.error("No batch request bodies provided");
-    return [];
-  }
-
-  // If it's a single batch request body (array of operations)
-  if (Array.isArray(batchRequestBodies) && batchRequestBodies.length > 0) {
-    // Check if it's an array of batch request bodies or a single batch request body
-    if (Array.isArray(batchRequestBodies[0])) {
-      // Array of batch request bodies
-      console.log("Detected array of batch request bodies:", batchRequestBodies.length);
-      return batchRequestBodies.filter(body => Array.isArray(body) && body.length > 0);
-    } else {
-      // Single batch request body
-      console.log("Detected single batch request body with operations:", batchRequestBodies.length);
-      return [batchRequestBodies];
-    }
-  }
-
-  console.error("Invalid batch request bodies format");
-  return [];
 }
 
 function analyzeBatchRequestBody(batchRequestBody) {
