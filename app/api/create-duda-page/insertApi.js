@@ -34,6 +34,13 @@ export async function triggerInsertApiForSections(jsonInput, uuid) {
       // Trigger the insert API
       const response = await callInsertApi(uuid, sectionsForThisBatch, i + 1);
       
+      // NEW: Print the detailed response
+      console.log(`\n🔍 INSERT API RESPONSE FOR BATCH ${i + 1}:`);
+      console.log('==========================================');
+      console.log('Response Status: SUCCESS');
+      console.log('Response Data:', JSON.stringify(response, null, 2));
+      console.log('==========================================');
+      
       responses.push({
         batchNumber: i + 1,
         sectionsProcessed: sectionsForThisBatch.length,
@@ -52,6 +59,15 @@ export async function triggerInsertApiForSections(jsonInput, uuid) {
       
     } catch (error) {
       console.error(`Error in batch ${i + 1}:`, error);
+      
+      // NEW: Print detailed error response
+      console.log(`\n❌ INSERT API ERROR FOR BATCH ${i + 1}:`);
+      console.log('==========================================');
+      console.log('Response Status: ERROR');
+      console.log('Error Message:', error.message);
+      console.log('Error Stack:', error.stack);
+      console.log('==========================================');
+      
       responses.push({
         batchNumber: i + 1,
         sectionsProcessed: 0,
@@ -63,8 +79,30 @@ export async function triggerInsertApiForSections(jsonInput, uuid) {
     }
   }
 
+  // NEW: Print overall summary of all responses
+  console.log('\n📊 INSERT API OVERALL SUMMARY:');
+  console.log('=====================================');
+  console.log(`Total batches processed: ${responses.length}`);
+  console.log(`Successful batches: ${responses.filter(r => r.success).length}`);
+  console.log(`Failed batches: ${responses.filter(r => !r.success).length}`);
+  console.log('Detailed responses by batch:');
+  responses.forEach((response, index) => {
+    console.log(`\n  Batch ${response.batchNumber}:`);
+    console.log(`    Status: ${response.success ? 'SUCCESS' : 'FAILED'}`);
+    console.log(`    Sections Range: ${response.sectionRange}`);
+    console.log(`    Sections Processed: ${response.sectionsProcessed}`);
+    if (response.success && response.response) {
+      console.log(`    Response Keys: ${Object.keys(response.response).join(', ')}`);
+    }
+    if (!response.success && response.error) {
+      console.log(`    Error: ${response.error}`);
+    }
+  });
+  console.log('=====================================');
+
   return responses;
 }
+
 /**
  * Makes the actual API call to Duda insert endpoint
  * @param {string} pageId - The page ID
@@ -80,6 +118,13 @@ async function callInsertApi(uuid, batchNumber) {
     'parentId': '1716942098',
     'insertAfterId': '1641784833',
   };
+
+  // NEW: Print request details
+  console.log(`\n📤 INSERT API REQUEST FOR BATCH ${batchNumber}:`);
+  console.log('===========================================');
+  console.log(`API URL: ${apiUrl}`);
+  console.log(`Request Body:`, JSON.stringify(requestBody, null, 2));
+  console.log('===========================================');
 
   try {
     const response = await fetch(apiUrl, {
@@ -108,14 +153,37 @@ async function callInsertApi(uuid, batchNumber) {
       body: JSON.stringify(requestBody)
     });
 
+    // NEW: Print response status and headers
+    console.log(`\n📥 INSERT API RESPONSE STATUS FOR BATCH ${batchNumber}:`);
+    console.log('============================================');
+    console.log(`Status: ${response.status} ${response.statusText}`);
+    console.log(`Headers:`, Object.fromEntries(response.headers.entries()));
+    console.log('============================================');
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      
+      // NEW: Print detailed error response
+      console.log(`\n❌ INSERT API ERROR RESPONSE FOR BATCH ${batchNumber}:`);
+      console.log('===============================================');
+      console.log(`Status: ${response.status}`);
+      console.log(`Status Text: ${response.statusText}`);
+      console.log(`Error Data:`, JSON.stringify(errorData, null, 2));
+      console.log('===============================================');
+      
       throw new Error(
         `API call failed with status ${response.status}: ${errorData.message || response.statusText}`
       );
     }
 
     const data = await response.json();
+    
+    // NEW: Print successful response data
+    console.log(`\n✅ INSERT API SUCCESS RESPONSE FOR BATCH ${batchNumber}:`);
+    console.log('=================================================');
+    console.log('Response Data:', JSON.stringify(data, null, 2));
+    console.log('=================================================');
+    
     if (!data) {
       throw new Error('Empty response from API');
     }
@@ -126,6 +194,7 @@ async function callInsertApi(uuid, batchNumber) {
     throw error; // Re-throw to be caught by the outer handler
   }
 }
+
 /**
  * Helper function to get sections from JSON input
  * @param {Array} jsonInput - The JSON array
@@ -186,6 +255,22 @@ export async function handleDynamicInsertApi(request, uuid) {
       };
     }
 
+    // NEW: Print the final handler response
+    console.log('\n🎯 DYNAMIC INSERT API HANDLER FINAL RESPONSE:');
+    console.log('================================================');
+    console.log('Handler Response:', JSON.stringify({
+      success: apiResponses.some(r => r.success),
+      totalSections: sections.length,
+      totalApicalls: apiResponses.length,
+      responses: apiResponses,
+      summary: {
+        successfulCalls: apiResponses.filter(r => r.success).length,
+        failedCalls: apiResponses.filter(r => !r.success).length,
+        totalSectionsProcessed: apiResponses.reduce((sum, r) => sum + r.sectionsProcessed, 0)
+      }
+    }, null, 2));
+    console.log('================================================');
+
     // Rest of the function remains the same...
     return {
       success: apiResponses.some(r => r.success),
@@ -200,6 +285,14 @@ export async function handleDynamicInsertApi(request, uuid) {
     };
   } catch (error) {
     console.error('Error in dynamic insert API handler:', error);
+    
+    // NEW: Print handler error
+    console.log('\n❌ DYNAMIC INSERT API HANDLER ERROR:');
+    console.log('====================================');
+    console.log('Error Message:', error.message);
+    console.log('Error Stack:', error.stack);
+    console.log('====================================');
+    
     return {
       success: false,
       error: error.message,
@@ -209,4 +302,3 @@ export async function handleDynamicInsertApi(request, uuid) {
     };
   }
 }
-

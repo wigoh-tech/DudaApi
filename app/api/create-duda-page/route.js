@@ -131,26 +131,26 @@ export async function POST(request) {
     console.log(`Page ID: ${pageId}`);
     console.log(`Item URL: ${itemUrl}`);
 
-    // Step 3: Get flex structure using the UUID
-    console.log("\n=== STEP 3: GETTING FLEX STRUCTURE ===");
-    const flexStructureData = await getFlexStructure(uuid, alias);
-    console.log("✅ Flex Structure API triggered successfully");
-    console.log("Flex Structure API Response:", JSON.stringify(flexStructureData, null, 2));
+    // Step 3: Get initial flex structure using the UUID
+    console.log("\n=== STEP 3: GETTING INITIAL FLEX STRUCTURE ===");
+    const initialFlexStructureData = await getFlexStructure(uuid, alias);
+    console.log("✅ Initial Flex Structure API triggered successfully");
+    console.log("Initial Flex Structure API Response:", JSON.stringify(initialFlexStructureData, null, 2));
 
-    // Step 4: Extract hierarchical IDs from flex structure
-    const extractedIds = extractHierarchicalIds(flexStructureData);
-    console.log("\n=== STEP 4: HIERARCHICAL IDS EXTRACTION ===");
-    console.log("Extracted Hierarchical IDs:", extractedIds);
+    // Step 4: Extract hierarchical IDs from initial flex structure
+    const initialExtractedIds = extractHierarchicalIds(initialFlexStructureData);
+    console.log("\n=== STEP 4: INITIAL HIERARCHICAL IDS EXTRACTION ===");
+    console.log("Initial Extracted Hierarchical IDs:", initialExtractedIds);
 
-    // Extract widget IDs from the actual flex structure response
-    const flexStructureWidgetIds = extractWidgetIds(flexStructureData);
-    console.log("Flex Structure Widget IDs:", flexStructureWidgetIds);
+    // Extract widget IDs from the initial flex structure response
+    const initialFlexStructureWidgetIds = extractWidgetIds(initialFlexStructureData);
+    console.log("Initial Flex Structure Widget IDs:", initialFlexStructureWidgetIds);
 
-    // Step 5: Parse HTML to match sections
+    // Step 5: Parse HTML to match sections (using initial data)
     console.log("\n=== STEP 5: PARSING HTML ===");
     const { matchedSections, htmlIds, flexWidgetIds } = await parsePageHtml(
       alias,
-      extractedIds
+      initialExtractedIds
     );
     console.log("✅ HTML parsing completed successfully");
     console.log("HTML Parsing Results:", {
@@ -165,27 +165,27 @@ export async function POST(request) {
       secondary: secondaryWidgetIds,
     });
 
-    const flexStructureIds = extractFlexStructureIds(flexStructureData);
+    const initialFlexStructureIds = extractFlexStructureIds(initialFlexStructureData);
 
-    // Create widgetIdsOnly object
-    const widgetIdsOnly = {
+    // Create initial widgetIdsOnly object
+    const initialWidgetIdsOnly = {
       fromInputBatches: inputBatchIds,
-      fromFlexStructure: flexStructureIds,
-      flatList: getWidgetIdsFlat(flexStructureData).map((id) => ({ id })),
+      fromFlexStructure: initialFlexStructureIds,
+      flatList: getWidgetIdsFlat(initialFlexStructureData).map((id) => ({ id })),
       count: {
         inputPrimary: inputBatchIds.primary.length,
         inputSecondary: inputBatchIds.secondary.length,
-        flexStructure: flexStructureIds.length,
+        flexStructure: initialFlexStructureIds.length,
         total:
           inputBatchIds.primary.length +
           inputBatchIds.secondary.length +
-          flexStructureIds.length,
+          initialFlexStructureIds.length,
       },
     };
 
-    // Step 6: Enhanced widget matching with elementsWithIds
-    console.log("\n=== STEP 6: ENHANCED WIDGET MATCHING ===");
-    let enhancedMatching = {
+    // Step 6: Enhanced widget matching with elementsWithIds (using initial data)
+    console.log("\n=== STEP 6: ENHANCED WIDGET MATCHING (INITIAL) ===");
+    let initialEnhancedMatching = {
       matches: [],
       summary: {},
       detailedMatches: [],
@@ -197,12 +197,12 @@ export async function POST(request) {
     };
 
     if (aboutPageData.success && aboutPageData.elementsWithIds) {
-      console.log("✅ Enhanced widget matching API triggered successfully");
-      console.log("Starting enhanced widget matching...");
+      console.log("✅ Initial enhanced widget matching API triggered successfully");
+      console.log("Starting initial enhanced widget matching...");
 
       // Match widget IDs with elements data
       const matchingResult = matchWidgetIdsWithElementsData(
-        widgetIdsOnly,
+        initialWidgetIdsOnly,
         aboutPageData.elementsWithIds
       );
 
@@ -227,7 +227,7 @@ export async function POST(request) {
         }),
       };
 
-      enhancedMatching = {
+      initialEnhancedMatching = {
         matches: matchingResult.matches,
         summary: matchingResult.summary,
         matchedWidgetIds: matchingResult.matchedWidgetIds,
@@ -235,8 +235,7 @@ export async function POST(request) {
         filteredMatches: filteredMatches,
       };
 
-      // Log detailed matching results
-      console.log("Enhanced Matching API Response:", {
+      console.log("Initial Enhanced Matching API Response:", {
         totalMatches: matchingResult.matches.length,
         uniqueWidgetIds: matchingResult.matchedWidgetIds.length,
         matchesWithContent: filteredMatches.withContent.length,
@@ -244,36 +243,6 @@ export async function POST(request) {
         primarySourceMatches: filteredMatches.primarySourceMatches.length,
         highScoreMatches: filteredMatches.highScoreMatches.length
       });
-
-      // Print detailed match information for matches with content
-      if (filteredMatches.withContent.length > 0) {
-        console.log("\n=== MATCHES WITH CONTENT DETAILS ===");
-        filteredMatches.withContent.forEach((match, index) => {
-          console.log(`\n--- Match ${index + 1} ---`);
-          console.log(`Widget ID: ${match.widgetId}`);
-          console.log(`Element ID: ${match.element.id}`);
-          console.log(`Match Type: ${match.matchType}`);
-          console.log(`Match Score: ${match.matchScore}%`);
-          console.log(`Source: ${match.widgetSource}`);
-          console.log(`Tag: ${match.element.tagName}`);
-          console.log(
-            `Text Preview: ${
-              match.element.text
-                ? match.element.text.substring(0, 100) + "..."
-                : "No text"
-            }`
-          );
-          console.log(
-            `HTML Preview: ${
-              match.element.html
-                ? match.element.html.substring(0, 150) + "..."
-                : "No HTML"
-            }`
-          );
-        });
-      }
-    } else {
-      console.log("❌ Enhanced widget matching API not triggered - missing required data");
     }
 
     // Step 7: Original widget matching (keeping for backwards compatibility)
@@ -287,19 +256,19 @@ export async function POST(request) {
       
       // Match widget IDs from flex structure with HTML content
       widgetMatches = matchWidgetIdsWithHtmlContent(
-        flexStructureData,
+        initialFlexStructureData,
         aboutPageData.dmDivHtml
       );
 
       // Get detailed match information
       detailedMatchInfo = getDetailedMatchInfo(
-        flexStructureData,
+        initialFlexStructureData,
         aboutPageData.dmDivHtml
       );
 
       // Match with elements if elementsWithIds is available
       if (aboutPageData.elementsWithIds) {
-        const flatWidgetIds = getWidgetIdsFlat(flexStructureData);
+        const flatWidgetIds = getWidgetIdsFlat(initialFlexStructureData);
         htmlElementMatches = matchWidgetIdsWithElements(
           aboutPageData.elementsWithIds,
           flatWidgetIds
@@ -316,11 +285,9 @@ export async function POST(request) {
         elementMatches: htmlElementMatches.length,
         matchRate: detailedMatchInfo.summary?.matchRate || "0%"
       });
-    } else {
-      console.log("❌ Original widget matching API not triggered - missing required data");
     }
 
-    // Step 8: NEW - Handle Dynamic Insert API
+    // Step 8: Dynamic Insert API
     console.log("\n=== STEP 8: DYNAMIC INSERT API ===");
     let dynamicInsertResult = null;
     
@@ -359,13 +326,148 @@ export async function POST(request) {
       console.log("❌ Dynamic Insert API not triggered - no primary batch body provided");
     }
 
-    // Step 9: Execute batch operations section by section with both batch bodies
-    console.log("\n=== STEP 9: BATCH OPERATIONS ===");
+    // Step 9: Get UPDATED flex structure after dynamic insert
+    console.log("\n=== STEP 9: GETTING UPDATED FLEX STRUCTURE AFTER DYNAMIC INSERT ===");
+    let updatedFlexStructureData = null;
+    let updatedExtractedIds = null;
+    let updatedFlexStructureWidgetIds = null;
+    let updatedWidgetIdsOnly = null;
+    let updatedEnhancedMatching = null;
+
+    if (dynamicInsertResult && dynamicInsertResult.success) {
+      console.log("✅ Getting fresh flex structure after dynamic insert...");
+      
+      // Add a small delay to ensure the dynamic insert operations are fully processed
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      try {
+        // Get fresh flex structure
+        updatedFlexStructureData = await getFlexStructure(uuid, alias);
+        console.log("✅ Updated Flex Structure API triggered successfully");
+        console.log("Updated Flex Structure API Response:", JSON.stringify(updatedFlexStructureData, null, 2));
+
+        // Extract hierarchical IDs from updated flex structure
+        updatedExtractedIds = extractHierarchicalIds(updatedFlexStructureData);
+        console.log("Updated Extracted Hierarchical IDs:", updatedExtractedIds);
+
+        // Extract widget IDs from the updated flex structure response
+        updatedFlexStructureWidgetIds = extractWidgetIds(updatedFlexStructureData);
+        console.log("Updated Flex Structure Widget IDs:", updatedFlexStructureWidgetIds);
+
+        // Create updated widgetIdsOnly object
+        const updatedFlexStructureIds = extractFlexStructureIds(updatedFlexStructureData);
+        updatedWidgetIdsOnly = {
+          fromInputBatches: inputBatchIds,
+          fromFlexStructure: updatedFlexStructureIds,
+          flatList: getWidgetIdsFlat(updatedFlexStructureData).map((id) => ({ id })),
+          count: {
+            inputPrimary: inputBatchIds.primary.length,
+            inputSecondary: inputBatchIds.secondary.length,
+            flexStructure: updatedFlexStructureIds.length,
+            total:
+              inputBatchIds.primary.length +
+              inputBatchIds.secondary.length +
+              updatedFlexStructureIds.length,
+          },
+        };
+
+        // Enhanced widget matching with updated data
+        console.log("\n=== STEP 9b: ENHANCED WIDGET MATCHING (UPDATED) ===");
+        updatedEnhancedMatching = {
+          matches: [],
+          summary: {},
+          detailedMatches: [],
+          filteredMatches: {
+            withContent: [],
+            exactMatches: [],
+            primarySourceMatches: [],
+          },
+        };
+
+        if (aboutPageData.success && aboutPageData.elementsWithIds) {
+          console.log("✅ Updated enhanced widget matching API triggered successfully");
+          console.log("Starting updated enhanced widget matching...");
+
+          // Match widget IDs with elements data using updated flex structure
+          const updatedMatchingResult = matchWidgetIdsWithElementsData(
+            updatedWidgetIdsOnly,
+            aboutPageData.elementsWithIds
+          );
+
+          // Get detailed content for matches
+          const updatedDetailedMatches = getDetailedContentForMatches(
+            updatedMatchingResult.matches
+          );
+
+          // Filter matches by different criteria
+          const updatedFilteredMatches = {
+            withContent: filterMatches(updatedMatchingResult.matches, {
+              hasContent: true,
+            }),
+            exactMatches: filterMatches(updatedMatchingResult.matches, {
+              matchType: "exact",
+            }),
+            primarySourceMatches: filterMatches(updatedMatchingResult.matches, {
+              widgetSource: "primary",
+            }),
+            highScoreMatches: filterMatches(updatedMatchingResult.matches, {
+              minMatchScore: 80,
+            }),
+          };
+
+          updatedEnhancedMatching = {
+            matches: updatedMatchingResult.matches,
+            summary: updatedMatchingResult.summary,
+            matchedWidgetIds: updatedMatchingResult.matchedWidgetIds,
+            detailedMatches: updatedDetailedMatches,
+            filteredMatches: updatedFilteredMatches,
+          };
+
+          console.log("Updated Enhanced Matching API Response:", {
+            totalMatches: updatedMatchingResult.matches.length,
+            uniqueWidgetIds: updatedMatchingResult.matchedWidgetIds.length,
+            matchesWithContent: updatedFilteredMatches.withContent.length,
+            exactMatches: updatedFilteredMatches.exactMatches.length,
+            primarySourceMatches: updatedFilteredMatches.primarySourceMatches.length,
+            highScoreMatches: updatedFilteredMatches.highScoreMatches.length
+          });
+
+          // Log comparison between initial and updated matching
+          console.log("\n=== COMPARISON: INITIAL vs UPDATED MATCHING ===");
+          console.log(`Initial matches: ${initialEnhancedMatching.matches.length}`);
+          console.log(`Updated matches: ${updatedEnhancedMatching.matches.length}`);
+          console.log(`Match difference: ${updatedEnhancedMatching.matches.length - initialEnhancedMatching.matches.length}`);
+        }
+
+        console.log("✅ Updated flex structure and matching completed successfully");
+
+      } catch (error) {
+        console.error("❌ Error getting updated flex structure:", error);
+        console.error("Error stack:", error.stack);
+        // Keep the initial data if getting updated data fails
+        updatedFlexStructureData = initialFlexStructureData;
+        updatedExtractedIds = initialExtractedIds;
+        updatedFlexStructureWidgetIds = initialFlexStructureWidgetIds;
+        updatedWidgetIdsOnly = initialWidgetIdsOnly;
+        updatedEnhancedMatching = initialEnhancedMatching;
+      }
+    } else {
+      console.log("❌ Using initial flex structure data - dynamic insert not successful or not triggered");
+      // Use initial data if dynamic insert wasn't successful
+      updatedFlexStructureData = initialFlexStructureData;
+      updatedExtractedIds = initialExtractedIds;
+      updatedFlexStructureWidgetIds = initialFlexStructureWidgetIds;
+      updatedWidgetIdsOnly = initialWidgetIdsOnly;
+      updatedEnhancedMatching = initialEnhancedMatching;
+    }
+
+    // Step 10: Execute batch operations section by section with updated data
+    console.log("\n=== STEP 10: BATCH OPERATIONS ===");
     const batchResults = await executeBatchOperationsSectionBySection(
       pageId,
       uuid,
       alias,
-      extractedIds,
+      updatedExtractedIds,
       htmlIds,
       flexWidgetIds,
       primaryBatchBody,
@@ -375,39 +477,72 @@ export async function POST(request) {
     console.log("✅ Batch operations completed");
     console.log("Batch Operations API Response:", JSON.stringify(batchResults, null, 2));
 
-    // Step 10: Return comprehensive response with filtered data
-    console.log("\n=== STEP 10: PREPARING FINAL RESPONSE ===");
+    // Step 11: Return comprehensive response with updated data only
+    console.log("\n=== STEP 11: PREPARING FINAL RESPONSE ===");
     
     const finalResponse = {
       success: batchResults.some((r) => r.success),
       data: {
         createPage: createPageResult,
         extractedData: { uuid, alias, itemUrl, pageId },
-        flexStructure: flexStructureData,
+        
+        // Renamed: updatedFlexStructure is now flexStructure
+        flexStructure: updatedFlexStructureData,
+        
+        // Comparison data
+        flexStructureComparison: {
+          initialWidgetCount: initialFlexStructureWidgetIds.reduce(
+            (sum, section) => sum + section.totalWidgets,
+            0
+          ),
+          updatedWidgetCount: updatedFlexStructureWidgetIds.reduce(
+            (sum, section) => sum + section.totalWidgets,
+            0
+          ),
+          widgetCountDifference: updatedFlexStructureWidgetIds.reduce(
+            (sum, section) => sum + section.totalWidgets,
+            0
+          ) - initialFlexStructureWidgetIds.reduce(
+            (sum, section) => sum + section.totalWidgets,
+            0
+          ),
+          initialSectionCount: initialExtractedIds.length,
+          updatedSectionCount: updatedExtractedIds.length,
+          sectionCountDifference: updatedExtractedIds.length - initialExtractedIds.length,
+        },
 
-        // NEW: Dynamic Insert API results
+        // Dynamic Insert API results
         dynamicInsertApi: dynamicInsertResult,
 
-        // Filtered about page data - only showing essential info
+        // Filtered about page data
         aboutPageData: {
           success: aboutPageData.success,
           message: aboutPageData.message,
           dmDivFound: aboutPageData.dmDivFound,
         },
 
-        // Enhanced widget IDs and matching
-        widgetIdsOnly: widgetIdsOnly,
+        // Widget IDs (using updated data)
+        widgetIdsOnly: updatedWidgetIdsOnly,
 
-        // NEW: Enhanced widget matching results with filtered matches
+        // Enhanced widget matching results (both initial and updated)
         enhancedWidgetMatching: {
-          matches: enhancedMatching.matches,
-          summary: enhancedMatching.summary,
-          matchedWidgetIds: enhancedMatching.matchedWidgetIds,
-          detailedMatches: enhancedMatching.detailedMatches,
-
-          // Show only exact matches in filteredMatches
-          filteredMatches: {
-            exactMatches: enhancedMatching.filteredMatches?.exactMatches || [],
+          initial: {
+            matches: initialEnhancedMatching.matches,
+            summary: initialEnhancedMatching.summary,
+            matchedWidgetIds: initialEnhancedMatching.matchedWidgetIds,
+            detailedMatches: initialEnhancedMatching.detailedMatches,
+            filteredMatches: {
+              exactMatches: initialEnhancedMatching.filteredMatches?.exactMatches || [],
+            },
+          },
+          updated: {
+            matches: updatedEnhancedMatching.matches,
+            summary: updatedEnhancedMatching.summary,
+            matchedWidgetIds: updatedEnhancedMatching.matchedWidgetIds,
+            detailedMatches: updatedEnhancedMatching.detailedMatches,
+            filteredMatches: {
+              exactMatches: updatedEnhancedMatching.filteredMatches?.exactMatches || [],
+            },
           },
         },
 
@@ -428,18 +563,19 @@ export async function POST(request) {
           },
         },
 
-        extractedIds,
+        // Use updated extracted IDs for the rest of the data
+        extractedIds: updatedExtractedIds,
         matchedSections,
         htmlIds,
         flexWidgetIds,
         batchResults,
         summary: {
-          totalSections: extractedIds.length,
-          totalWidgetsInFlexStructure: flexStructureWidgetIds.reduce(
+          totalSections: updatedExtractedIds.length,
+          totalWidgetsInFlexStructure: updatedFlexStructureWidgetIds.reduce(
             (sum, section) => sum + section.totalWidgets,
             0
           ),
-          widgetsBySection: flexStructureWidgetIds.map((section) => ({
+          widgetsBySection: updatedFlexStructureWidgetIds.map((section) => ({
             sectionId: section.sectionId,
             widgetCount: section.totalWidgets,
           })),
@@ -456,7 +592,7 @@ export async function POST(request) {
             (r) => r.secondaryBatch && !r.secondaryBatch.success
           ).length,
 
-          // NEW: Dynamic Insert API summary
+          // Dynamic Insert API summary
           dynamicInsertApiSummary: dynamicInsertResult ? {
             triggered: true,
             success: dynamicInsertResult.success,
@@ -470,7 +606,7 @@ export async function POST(request) {
             reason: "No primary batch body provided"
           },
 
-          // Filtered about page parsing summary
+          // About page parsing summary
           aboutPageParsing: {
             success: aboutPageData.success,
             dmDivFound: aboutPageData.dmDivFound,
@@ -478,25 +614,34 @@ export async function POST(request) {
             elementsWithIds: aboutPageData.elementsWithIds?.length || 0,
           },
 
-          // Enhanced widget matching summary with focus on exact matches
+          // Enhanced widget matching summary (using updated data)
           enhancedWidgetMatchingSummary: {
-            totalMatches: enhancedMatching.matches.length,
-            uniqueWidgetIds: enhancedMatching.matchedWidgetIds?.length || 0,
-            matchRate: enhancedMatching.summary?.matchRate || "0%",
-            exactMatches:
-              enhancedMatching.filteredMatches?.exactMatches?.length || 0,
-            // Removed other match types to focus on exact matches
+            initial: {
+              totalMatches: initialEnhancedMatching.matches.length,
+              uniqueWidgetIds: initialEnhancedMatching.matchedWidgetIds?.length || 0,
+              matchRate: initialEnhancedMatching.summary?.matchRate || "0%",
+              exactMatches: initialEnhancedMatching.filteredMatches?.exactMatches?.length || 0,
+            },
+            updated: {
+              totalMatches: updatedEnhancedMatching.matches.length,
+              uniqueWidgetIds: updatedEnhancedMatching.matchedWidgetIds?.length || 0,
+              matchRate: updatedEnhancedMatching.summary?.matchRate || "0%",
+              exactMatches: updatedEnhancedMatching.filteredMatches?.exactMatches?.length || 0,
+            },
+            improvement: {
+              matchesAdded: updatedEnhancedMatching.matches.length - initialEnhancedMatching.matches.length,
+              exactMatchesAdded: (updatedEnhancedMatching.filteredMatches?.exactMatches?.length || 0) - (initialEnhancedMatching.filteredMatches?.exactMatches?.length || 0),
+            },
           },
 
-          // Widget IDs summary
+          // Widget IDs summary (using updated data)
           widgetIdsSummary: {
             inputPrimaryCount: inputBatchIds.primary.length,
             inputSecondaryCount: inputBatchIds.secondary.length,
-            flexStructureCount: flexStructureIds.length,
-            totalExtractedIds:
-              inputBatchIds.primary.length +
-              inputBatchIds.secondary.length +
-              flexStructureIds.length,
+            initialFlexStructureCount: initialFlexStructureIds.length,
+            updatedFlexStructureCount: updatedWidgetIdsOnly.fromFlexStructure.length,
+            flexStructureCountDifference: updatedWidgetIdsOnly.fromFlexStructure.length - initialFlexStructureIds.length,
+            totalExtractedIds: updatedWidgetIdsOnly.count.total,
           },
         },
       },
@@ -506,12 +651,15 @@ export async function POST(request) {
     console.log("Final Response Summary:", {
       success: finalResponse.success,
       createPageSuccess: !!createPageResult.page,
-      flexStructureSuccess: !!flexStructureData,
+      flexStructureSuccess: !!updatedFlexStructureData,
       dynamicInsertTriggered: !!dynamicInsertResult,
       dynamicInsertSuccess: dynamicInsertResult?.success || false,
       batchOperationsSuccess: batchResults.some((r) => r.success),
-      totalSections: extractedIds.length,
-      totalWidgets: flexStructureWidgetIds.reduce((sum, section) => sum + section.totalWidgets, 0)
+      initialSections: initialExtractedIds.length,
+      updatedSections: updatedExtractedIds.length,
+      initialWidgets: initialFlexStructureWidgetIds.reduce((sum, section) => sum + section.totalWidgets, 0),
+      updatedWidgets: updatedFlexStructureWidgetIds.reduce((sum, section) => sum + section.totalWidgets, 0),
+      widgetCountDifference: updatedFlexStructureWidgetIds.reduce((sum, section) => sum + section.totalWidgets, 0) - initialFlexStructureWidgetIds.reduce((sum, section) => sum + section.totalWidgets, 0)
     });
 
     return NextResponse.json(finalResponse);
