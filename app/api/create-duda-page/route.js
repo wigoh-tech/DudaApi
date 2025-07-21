@@ -19,6 +19,14 @@ import {
   matchWidgetIdsWithElements,
   getInnerContentForMatches,
 } from "./parseAboutHtmlPage";
+import { 
+  compareStructures, 
+  extractPrimaryBatchGroups, 
+  extractFlexStructureGroups,
+  printStructureExplanation 
+} from "./compareStructure";
+import { handleChildDeletions } from "./deleteColumn";
+
 
 // NEW: Function to extract only widget IDs in a clean format
 function extractOnlyWidgetIds(widgetData) {
@@ -136,7 +144,48 @@ export async function POST(request) {
     const initialFlexStructureData = await getFlexStructure(uuid, alias);
     console.log("✅ Initial Flex Structure API triggered successfully");
     console.log("Initial Flex Structure API Response:", JSON.stringify(initialFlexStructureData, null, 2));
+    
+ // Dynamic Insert API
+ 
+    console.log("\n=== DYNAMIC INSERT API ===");
+    let dynamicInsertResult = null;
+    
+    if (primaryBatchBody && Array.isArray(primaryBatchBody) && primaryBatchBody.length > 0) {
+      console.log("✅ Dynamic Insert API triggered successfully");
+      console.log(`Processing ${primaryBatchBody.length} sections for dynamic insert...`);
+      
+      try {
+        dynamicInsertResult = await handleDynamicInsertApi(
+          { primaryBatchBody },
+          uuid
+        );
+        
+        console.log("Dynamic Insert API Response:", JSON.stringify(dynamicInsertResult, null, 2));
+        
+        if (dynamicInsertResult.success) {
+          console.log(`✅ Dynamic Insert completed successfully:`);
+          console.log(`  - Total sections processed: ${dynamicInsertResult.totalSections}`);
+          console.log(`  - Total API calls made: ${dynamicInsertResult.totalApicalls}`);
+          console.log(`  - Successful calls: ${dynamicInsertResult.summary.successfulCalls}`);
+          console.log(`  - Failed calls: ${dynamicInsertResult.summary.failedCalls}`);
+        } else {
+          console.log(`❌ Dynamic Insert failed: ${dynamicInsertResult.error}`);
+        }
+      } catch (error) {
+        console.error("❌ Dynamic Insert API error:", error);
+        dynamicInsertResult = {
+          success: false,
+          error: error.message,
+          totalSections: 0,
+          totalApicalls: 0,
+          responses: []
+        };
+      }
+    } else {
+      console.log("❌ Dynamic Insert API not triggered - no primary batch body provided");
+    }
 
+    
     // Step 4: Extract hierarchical IDs from initial flex structure
     const initialExtractedIds = extractHierarchicalIds(initialFlexStructureData);
     console.log("\n=== STEP 4: INITIAL HIERARCHICAL IDS EXTRACTION ===");
@@ -287,45 +336,6 @@ export async function POST(request) {
       });
     }
 
-    // Step 8: Dynamic Insert API
-    console.log("\n=== STEP 8: DYNAMIC INSERT API ===");
-    let dynamicInsertResult = null;
-    
-    if (primaryBatchBody && Array.isArray(primaryBatchBody) && primaryBatchBody.length > 0) {
-      console.log("✅ Dynamic Insert API triggered successfully");
-      console.log(`Processing ${primaryBatchBody.length} sections for dynamic insert...`);
-      
-      try {
-        dynamicInsertResult = await handleDynamicInsertApi(
-          { primaryBatchBody },
-          uuid
-        );
-        
-        console.log("Dynamic Insert API Response:", JSON.stringify(dynamicInsertResult, null, 2));
-        
-        if (dynamicInsertResult.success) {
-          console.log(`✅ Dynamic Insert completed successfully:`);
-          console.log(`  - Total sections processed: ${dynamicInsertResult.totalSections}`);
-          console.log(`  - Total API calls made: ${dynamicInsertResult.totalApicalls}`);
-          console.log(`  - Successful calls: ${dynamicInsertResult.summary.successfulCalls}`);
-          console.log(`  - Failed calls: ${dynamicInsertResult.summary.failedCalls}`);
-        } else {
-          console.log(`❌ Dynamic Insert failed: ${dynamicInsertResult.error}`);
-        }
-      } catch (error) {
-        console.error("❌ Dynamic Insert API error:", error);
-        dynamicInsertResult = {
-          success: false,
-          error: error.message,
-          totalSections: 0,
-          totalApicalls: 0,
-          responses: []
-        };
-      }
-    } else {
-      console.log("❌ Dynamic Insert API not triggered - no primary batch body provided");
-    }
-
     // Step 9: Get UPDATED flex structure after dynamic insert
     console.log("\n=== STEP 9: GETTING UPDATED FLEX STRUCTURE AFTER DYNAMIC INSERT ===");
     let updatedFlexStructureData = null;
@@ -460,6 +470,224 @@ export async function POST(request) {
       updatedWidgetIdsOnly = initialWidgetIdsOnly;
       updatedEnhancedMatching = initialEnhancedMatching;
     }
+// Step 9b: STRUCTURE COMPARISON - Compare Primary Batch with Flex Structure (PARENT GROUPS ONLY)
+console.log("\n=== STEP 9B: STRUCTURE COMPARISON (PARENT GROUPS ONLY) ===");
+let structureComparison = null;
+
+if (primaryBatchBody && updatedFlexStructureData) {
+  console.log("✅ Structure comparison API triggered successfully (focusing on parent groups)");
+  
+  try {
+    // Extract and print Primary Batch structure (parent groups only)
+    const primaryBatchStructure = extractPrimaryBatchGroups(primaryBatchBody);
+    printStructureExplanation(primaryBatchStructure, "Primary Batch (Parent Groups)");
+    
+    // Extract and print Flex Structure (parent groups only)
+    const flexStructureGroups = extractFlexStructureGroups(updatedFlexStructureData);
+    printStructureExplanation(flexStructureGroups, "Flex Structure (Parent Groups)");
+    
+    // Compare both structures (parent groups only)
+    structureComparison = compareStructures(primaryBatchBody, updatedFlexStructureData);
+    
+    console.log("Structure Comparison API Response (Parent Groups):", JSON.stringify({
+      primaryBatchSections: structureComparison.summary.primaryBatchSections,
+      flexStructureSections: structureComparison.summary.flexStructureSections,
+      primaryBatchParentGroups: structureComparison.summary.primaryBatchGroups,
+      flexStructureParentGroups: structureComparison.summary.flexStructureGroups,
+      matchStatus: structureComparison.summary.matchStatus,
+      sectionDifference: structureComparison.summary.sectionDifference,
+      parentGroupDifference: structureComparison.summary.groupDifference,
+      parentGroupDetails: structureComparison.parentGroupDetails || []
+    }, null, 2));
+    
+    console.log("✅ Structure comparison (parent groups) completed successfully");
+    
+  } catch (error) {
+    console.error("❌ Structure comparison error:", error);
+    structureComparison = {
+      success: false,
+      error: error.message,
+      summary: {
+        primaryBatchSections: 0,
+        flexStructureSections: 0,
+        primaryBatchGroups: 0,
+        flexStructureGroups: 0,
+        matchStatus: "ERROR",
+        sectionDifference: 0,
+        groupDifference: 0
+      }
+    };
+  }
+} else {
+  console.log("❌ Structure comparison not triggered - missing primary batch body or flex structure data");
+  structureComparison = {
+    success: false,
+    message: "Structure comparison not triggered - missing required data",
+    summary: {
+      primaryBatchSections: 0,
+      flexStructureSections: 0,
+      primaryBatchGroups: 0,
+      flexStructureGroups: 0,
+      matchStatus: "NOT_TRIGGERED",
+      sectionDifference: 0,
+      groupDifference: 0
+    }
+  };
+}
+// Calculate total direct children from all sections
+const primaryTotalDirectChildren = structureComparison?.primaryBatch?.sections?.reduce(
+  (sum, section) =>
+    sum +
+    section.parentGroups.reduce(
+      (sectionSum, group) => sectionSum + group.directChildCount,
+      0
+    ),
+  0
+) || 0;
+
+const flexTotalDirectChildren = structureComparison?.flexStructure?.sections?.reduce(
+  (sum, section) =>
+    sum +
+    section.parentGroups.reduce(
+      (sectionSum, group) => sectionSum + group.directChildCount,
+      0
+    ),
+  0
+) || 0;
+
+
+// Step 9c: CHILD DELETION OPERATIONS
+console.log("\n=== STEP 9C: CHILD DELETION OPERATIONS ===");
+let deleteOperationsResult = null;
+
+if (structureComparison && structureComparison.success !== false && pageId && uuid) {
+  console.log("✅ Child deletion operations API triggered successfully");
+  
+  try {
+    // Handle child deletions based on structure comparison - PASS UUID HERE
+    deleteOperationsResult = await handleChildDeletions(structureComparison, pageId, uuid);
+    
+    console.log("Child Deletion Operations API Response:", JSON.stringify({
+      success: deleteOperationsResult.success,
+      totalAttempted: deleteOperationsResult.totalAttempted,
+      totalSuccessful: deleteOperationsResult.totalSuccessful,
+      totalFailed: deleteOperationsResult.totalFailed,
+      extractionSummary: {
+        fromFlexStructure: deleteOperationsResult.extractionResults?.fromFlexStructure?.length || 0,
+        fromParentGroupDetails: deleteOperationsResult.extractionResults?.fromParentGroupDetails?.length || 0,
+        fromEnhancedExtraction: deleteOperationsResult.extractionResults?.fromEnhancedExtraction?.length || 0,
+        combinedUnique: deleteOperationsResult.extractionResults?.combinedUnique?.length || 0
+      },
+      successfulDeletions: deleteOperationsResult.summary?.successfulDeletions || [],
+      failedDeletions: deleteOperationsResult.summary?.failedDeletions || []
+    }, null, 2));
+    
+    // Enhanced logging for delete API responses
+    console.log("\n=== DELETE API RESPONSES DETAILED LOG ===");
+    if (deleteOperationsResult.deletionResults && deleteOperationsResult.deletionResults.length > 0) {
+      deleteOperationsResult.deletionResults.forEach((result, index) => {
+        console.log(`\n--- DELETE API RESPONSE ${index + 1} ---`);
+        console.log(`Child ID: ${result.childId}`);
+        console.log(`Group ID: ${result.groupId}`);
+        console.log(`Section ID: ${result.sectionId}`);
+        console.log(`Success: ${result.success}`);
+        console.log(`Deletion Reason: ${result.deletionReason}`);
+        console.log(`Response Body: ${result.response}`);
+        
+        if (result.parsedResponse) {
+          console.log(`Parsed Response:`, JSON.stringify(result.parsedResponse, null, 2));
+        }
+        
+        if (result.responseHeaders) {
+          console.log(`Response Headers:`, JSON.stringify(result.responseHeaders, null, 2));
+        }
+        
+        if (result.error) {
+          console.log(`Error: ${result.error}`);
+        }
+      });
+    } else {
+      console.log("No deletion results to display");
+    }
+    
+    // Log successful deletions with their responses
+    if (deleteOperationsResult.summary?.successfulDeletions?.length > 0) {
+      console.log("\n=== SUCCESSFUL DELETIONS WITH RESPONSES ===");
+      deleteOperationsResult.summary.successfulDeletions.forEach((deletion, index) => {
+        console.log(`\n--- Successful Deletion ${index + 1} ---`);
+        console.log(`Child ID: ${deletion.childId}`);
+        console.log(`Response: ${deletion.response}`);
+        if (deletion.parsedResponse) {
+          console.log(`Parsed Response:`, JSON.stringify(deletion.parsedResponse, null, 2));
+        }
+        if (deletion.responseHeaders) {
+          console.log(`Response Headers:`, JSON.stringify(deletion.responseHeaders, null, 2));
+        }
+      });
+    }
+    
+    // Log failed deletions with their responses
+    if (deleteOperationsResult.summary?.failedDeletions?.length > 0) {
+      console.log("\n=== FAILED DELETIONS WITH RESPONSES ===");
+      deleteOperationsResult.summary.failedDeletions.forEach((deletion, index) => {
+        console.log(`\n--- Failed Deletion ${index + 1} ---`);
+        console.log(`Child ID: ${deletion.childId}`);
+        console.log(`Error: ${deletion.error}`);
+        console.log(`Response: ${deletion.response}`);
+        if (deletion.parsedResponse) {
+          console.log(`Parsed Response:`, JSON.stringify(deletion.parsedResponse, null, 2));
+        }
+        if (deletion.responseHeaders) {
+          console.log(`Response Headers:`, JSON.stringify(deletion.responseHeaders, null, 2));
+        }
+      });
+    }
+    
+    console.log("✅ Child deletion operations completed successfully");
+    
+    // Add delay after deletions before proceeding to batch operations
+    if (deleteOperationsResult.totalSuccessful > 0) {
+      console.log("Waiting 3 seconds after deletions before proceeding to batch operations...");
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+    
+  } catch (error) {
+    console.error("❌ Child deletion operations error:", error);
+    deleteOperationsResult = {
+      success: false,
+      error: error.message,
+      totalAttempted: 0,
+      totalSuccessful: 0,
+      totalFailed: 0,
+      deletionResults: [],
+      extractionResults: {
+        fromFlexStructure: [],
+        fromParentGroupDetails: [],
+        fromEnhancedExtraction: [],
+        combinedUnique: []
+      }
+    };
+  }
+} else {
+  console.log("❌ Child deletion operations not triggered - missing structure comparison, page ID, or UUID");
+  console.log(`Structure comparison exists: ${!!structureComparison}`);
+  console.log(`Page ID exists: ${!!pageId}`);
+  console.log(`UUID exists: ${!!uuid}`);
+  deleteOperationsResult = {
+    success: false,
+    message: "Child deletion operations not triggered - missing required data",
+    totalAttempted: 0,
+    totalSuccessful: 0,
+    totalFailed: 0,
+    deletionResults: [],
+    extractionResults: {
+      fromFlexStructure: [],
+      fromParentGroupDetails: [],
+      fromEnhancedExtraction: [],
+      combinedUnique: []
+    }
+  };
+}
 
     // Step 10: Execute batch operations section by section with updated data
     console.log("\n=== STEP 10: BATCH OPERATIONS ===");
@@ -488,7 +716,8 @@ export async function POST(request) {
         
         // Renamed: updatedFlexStructure is now flexStructure
         flexStructure: updatedFlexStructureData,
-        
+        structureComparison: structureComparison,
+        deleteOperations: deleteOperationsResult,
         // Comparison data
         flexStructureComparison: {
           initialWidgetCount: initialFlexStructureWidgetIds.reduce(
@@ -605,7 +834,74 @@ export async function POST(request) {
             triggered: false,
             reason: "No primary batch body provided"
           },
+          structureComparisonSummary: {
+            triggered: !!structureComparison && structureComparison.summary.matchStatus !== "NOT_TRIGGERED",
+            matchStatus: structureComparison?.summary?.matchStatus || "NOT_AVAILABLE",
+            primaryBatchSections: structureComparison?.summary?.primaryBatchSections || 0,
+            flexStructureSections: structureComparison?.summary?.flexStructureSections || 0,
+            primaryBatchGroups: structureComparison?.summary?.primaryBatchGroups || 0,
+            flexStructureGroups: structureComparison?.summary?.flexStructureGroups || 0,
+            // Add these new fields for total direct children
+            primaryTotalDirectChildren: primaryTotalDirectChildren,
+            flexTotalDirectChildren: flexTotalDirectChildren,
+            directChildrenMatch: primaryTotalDirectChildren === flexTotalDirectChildren,
+            directChildrenDifference: Math.abs(primaryTotalDirectChildren - flexTotalDirectChildren),
+            sectionDifference: structureComparison?.summary?.sectionDifference || 0,
+            groupDifference: structureComparison?.summary?.groupDifference || 0,
+            perfectMatches: structureComparison?.comparison?.sectionBySection?.filter(s => s.status === "MATCH").length || 0,
+            partialMatches: structureComparison?.comparison?.sectionBySection?.filter(s => s.status === "PARTIAL_MATCH").length || 0,
+            noMatches: structureComparison?.comparison?.sectionBySection?.filter(s => s.status === "MISMATCH").length || 0
+          },
 
+          deleteOperations: {
+          ...deleteOperationsResult,
+          // Include detailed response data in the final response
+          detailedResponses: deleteOperationsResult?.deletionResults?.map(result => ({
+            childId: result.childId,
+            groupId: result.groupId,
+            sectionId: result.sectionId,
+            success: result.success,
+            response: result.response,
+            parsedResponse: result.parsedResponse,
+            responseHeaders: result.responseHeaders,
+            error: result.error,
+            deletionReason: result.deletionReason
+          })) || []
+        },
+
+// ===== ADD THIS TO THE SUMMARY SECTION (around line 760) =====
+// Add this inside the summary object:
+          // Child deletion operations summary
+          childDeletionSummary: {
+            triggered: !!deleteOperationsResult && deleteOperationsResult.message !== "Child deletion operations not triggered - missing required data",
+            success: deleteOperationsResult?.success || false,
+            totalAttempted: deleteOperationsResult?.totalAttempted || 0,
+            totalSuccessful: deleteOperationsResult?.totalSuccessful || 0,
+            totalFailed: deleteOperationsResult?.totalFailed || 0,
+            extractionSummary: {
+              fromFlexStructure: deleteOperationsResult?.extractionResults?.fromFlexStructure?.length || 0,
+              fromParentGroupDetails: deleteOperationsResult?.extractionResults?.fromParentGroupDetails?.length || 0,
+              fromEnhancedExtraction: deleteOperationsResult?.extractionResults?.fromEnhancedExtraction?.length || 0,
+              combinedUnique: deleteOperationsResult?.extractionResults?.combinedUnique?.length || 0
+            },
+            successfulDeletions: deleteOperationsResult?.summary?.successfulDeletions || [],
+            failedDeletions: deleteOperationsResult?.summary?.failedDeletions?.length || 0,
+            error: deleteOperationsResult?.error || null,
+            // Include response details in summary
+            responseDetails: {
+              successfulResponses: deleteOperationsResult?.summary?.successfulDeletions?.map(del => ({
+                childId: del.childId,
+                response: del.response,
+                parsedResponse: del.parsedResponse
+              })) || [],
+              failedResponses: deleteOperationsResult?.summary?.failedDeletions?.map(del => ({
+                childId: del.childId,
+                error: del.error,
+                response: del.response,
+                parsedResponse: del.parsedResponse
+              })) || []
+            }
+          },
           // About page parsing summary
           aboutPageParsing: {
             success: aboutPageData.success,
