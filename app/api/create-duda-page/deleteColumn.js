@@ -327,7 +327,12 @@ export function extractChildIdsFromStructureComparison(structureComparison) {
  * @param {string} elementId - The Element ID for the deletion API
  * @returns {Object} Deletion results
  */
-export async function executeChildDeletions(childIdsToDelete, pageId, uuid, elementId) {
+export async function executeChildDeletions(
+  childIdsToDelete,
+  pageId,
+  uuid,
+  elementId
+) {
   console.log("\n=== EXECUTING CHILD DELETIONS ===");
   console.log(`Total deletions to execute: ${childIdsToDelete.length}`);
   console.log(`Page ID: ${pageId}`);
@@ -361,11 +366,13 @@ export async function executeChildDeletions(childIdsToDelete, pageId, uuid, elem
     try {
       // Use sectionId as elementId if elementId is undefined or not provided
       const actualElementId = elementId || childToDelete.sectionId;
-      
+
       // Construct the deletion URL
       const deleteUrl = `https://my.duda.co/api/uis/pages/${uuid}/flexStructure/${actualElementId}/element/${childToDelete.childId}?dontSaveHistory=true`;
-      
-      console.log(`Using Element ID: ${actualElementId} (original elementId: ${elementId}, sectionId: ${childToDelete.sectionId})`);
+
+      console.log(
+        `Using Element ID: ${actualElementId} (original elementId: ${elementId}, sectionId: ${childToDelete.sectionId})`
+      );
 
       const response = await fetch(deleteUrl, {
         method: "DELETE",
@@ -458,7 +465,12 @@ export async function executeChildDeletions(childIdsToDelete, pageId, uuid, elem
  * @param {string} elementId - The element ID for the deletion API
  * @returns {Object} Complete deletion results
  */
-export async function handleChildDeletions(structureComparison, pageId, uuid, elementId) {
+export async function handleChildDeletions(
+  structureComparison,
+  pageId,
+  uuid,
+  elementId
+) {
   console.log("\n=== STARTING CHILD DELETION PROCESS ===");
 
   // Extract child IDs using all available methods
@@ -510,7 +522,12 @@ export async function handleChildDeletions(structureComparison, pageId, uuid, el
   }
 
   // Execute deletions - NOW PASS elementId AS 4TH PARAMETER
-  const deletionResults = await executeChildDeletions(uniqueChildIds, pageId, uuid, elementId);
+  const deletionResults = await executeChildDeletions(
+    uniqueChildIds,
+    pageId,
+    uuid,
+    elementId
+  );
 
   return {
     ...deletionResults,
