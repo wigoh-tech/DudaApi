@@ -158,8 +158,6 @@ export async function POST(request) {
       JSON.stringify(initialFlexStructureData, null, 2)
     );
 
-    // Dynamic Insert API
-
     console.log("\n=== DYNAMIC INSERT API ===");
     let dynamicInsertResult = null;
 
@@ -172,11 +170,14 @@ export async function POST(request) {
       console.log(
         `Processing ${primaryBatchBody.length} sections for dynamic insert...`
       );
+      console.log(`Using alias: ${alias} for HTML ID extraction`);
 
       try {
+        // Pass alias to the dynamic insert API for HTML ID extraction
         dynamicInsertResult = await handleDynamicInsertApi(
           { primaryBatchBody },
-          uuid
+          uuid,
+          alias // Add alias parameter here
         );
 
         console.log(
@@ -198,6 +199,26 @@ export async function POST(request) {
           console.log(
             `  - Failed calls: ${dynamicInsertResult.summary.failedCalls}`
           );
+
+          // New: Log HTML ID extraction summary
+          if (dynamicInsertResult.extractionSummary) {
+            console.log(
+              `  - HTML ID extractions attempted: ${dynamicInsertResult.extractionSummary.totalExtractionAttempts}`
+            );
+            console.log(
+              `  - HTML ID extractions successful: ${dynamicInsertResult.extractionSummary.successfulExtractions}`
+            );
+            console.log(
+              `  - HTML ID extractions failed: ${dynamicInsertResult.extractionSummary.failedExtractions}`
+            );
+            if (dynamicInsertResult.extractionSummary.extractedIds.length > 0) {
+              console.log(
+                `  - Extracted HTML IDs: ${dynamicInsertResult.extractionSummary.extractedIds.join(
+                  ", "
+                )}`
+              );
+            }
+          }
         } else {
           console.log(`❌ Dynamic Insert failed: ${dynamicInsertResult.error}`);
         }
@@ -209,6 +230,12 @@ export async function POST(request) {
           totalSections: 0,
           totalApicalls: 0,
           responses: [],
+          extractionSummary: {
+            totalExtractionAttempts: 0,
+            successfulExtractions: 0,
+            failedExtractions: 0,
+            extractedIds: [],
+          },
         };
       }
     } else {
@@ -1174,7 +1201,6 @@ export async function POST(request) {
             (r) => r.secondaryBatch && !r.secondaryBatch.success
           ).length,
 
-          // Dynamic Insert API summary
           dynamicInsertApiSummary: dynamicInsertResult
             ? {
                 triggered: true,
@@ -1185,6 +1211,31 @@ export async function POST(request) {
                   dynamicInsertResult.summary?.successfulCalls || 0,
                 failedCalls: dynamicInsertResult.summary?.failedCalls || 0,
                 error: dynamicInsertResult.error || null,
+                // New: HTML ID extraction summary
+                htmlIdExtraction: {
+                  totalAttempts:
+                    dynamicInsertResult.extractionSummary
+                      ?.totalExtractionAttempts || 0,
+                  successfulExtractions:
+                    dynamicInsertResult.extractionSummary
+                      ?.successfulExtractions || 0,
+                  failedExtractions:
+                    dynamicInsertResult.extractionSummary?.failedExtractions ||
+                    0,
+                  extractedIds:
+                    dynamicInsertResult.extractionSummary?.extractedIds || [],
+                  extractionRate:
+                    dynamicInsertResult.extractionSummary
+                      ?.totalExtractionAttempts > 0
+                      ? `${Math.round(
+                          (dynamicInsertResult.extractionSummary
+                            .successfulExtractions /
+                            dynamicInsertResult.extractionSummary
+                              .totalExtractionAttempts) *
+                            100
+                        )}%`
+                      : "0%",
+                },
               }
             : {
                 triggered: false,
