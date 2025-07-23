@@ -566,3 +566,103 @@ export function printStructureExplanation(structure, structureType) {
     }
   });
 }
+
+// Add this function to your existing compareStructure.js file
+
+/**
+ * Enhanced structure comparison with child group extraction trigger
+ * @param {Array} primaryBatchBody - The primary batch request body array
+ * @param {Object} flexStructureData - The flex structure response
+ * @returns {Object} - Enhanced comparison results with child group extraction info
+ */
+export function compareStructuresWithChildGroupExtraction(
+  primaryBatchBody,
+  flexStructureData
+) {
+  console.log("\n=== COMPARING STRUCTURES WITH CHILD GROUP EXTRACTION ===");
+
+  // Get the basic comparison first
+  const basicComparison = compareStructures(
+    primaryBatchBody,
+    flexStructureData
+  );
+
+  // Add directChildren counts to summary
+  basicComparison.summary.primaryDirectChildren =
+    basicComparison.primaryBatch.sections.reduce(
+      (sum, section) =>
+        sum +
+        section.parentGroups.reduce(
+          (sectionSum, group) => sectionSum + group.directChildCount,
+          0
+        ),
+      0
+    );
+
+  basicComparison.summary.flexDirectChildren =
+    basicComparison.flexStructure.sections.reduce(
+      (sum, section) =>
+        sum +
+        section.parentGroups.reduce(
+          (sectionSum, group) => sectionSum + group.directChildCount,
+          0
+        ),
+      0
+    );
+
+  // Check if any primary parent groups have more than 2 children
+  const sectionsRequiringChildGroups = [];
+  let totalPrimaryGroupsWithMoreThan2Children = 0;
+
+  basicComparison.comparison.sectionBySection.forEach(
+    (sectionComparison, sectionIndex) => {
+      if (sectionComparison.parentGroupDetails) {
+        const parentGroupsNeedingChildren =
+          sectionComparison.parentGroupDetails.filter(
+            (detail) => detail.primaryDirectChildren > 2
+          );
+
+        if (parentGroupsNeedingChildren.length > 0) {
+          sectionsRequiringChildGroups.push({
+            sectionIndex: sectionIndex + 1,
+            parentGroupsCount: parentGroupsNeedingChildren.length,
+            parentGroups: parentGroupsNeedingChildren.map((detail) => ({
+              groupIndex: detail.groupIndex,
+              primaryGroupId: detail.primaryGroupId,
+              flexGroupId: detail.flexGroupId,
+              primaryDirectChildren: detail.primaryDirectChildren,
+              flexDirectChildren: detail.flexDirectChildren,
+              childrenDifference:
+                detail.primaryDirectChildren - detail.flexDirectChildren,
+            })),
+          });
+          totalPrimaryGroupsWithMoreThan2Children +=
+            parentGroupsNeedingChildren.length;
+        }
+      }
+    }
+  );
+
+  // Add child group extraction information
+  basicComparison.childGroupExtraction = {
+    triggered: sectionsRequiringChildGroups.length > 0,
+    sectionsRequiringChildGroups: sectionsRequiringChildGroups.length,
+    totalParentGroupsNeedingChildren: totalPrimaryGroupsWithMoreThan2Children,
+    sectionsDetails: sectionsRequiringChildGroups,
+    extractionRequired: sectionsRequiringChildGroups.length > 0,
+    summary: `${sectionsRequiringChildGroups.length} sections require child group extraction`,
+  };
+
+  console.log(`\n✅ Enhanced Structure Comparison Complete:`);
+  console.log(
+    `  Sections Requiring Child Groups: ${sectionsRequiringChildGroups.length}`
+  );
+  console.log(
+    `  Parent Groups Needing Children: ${totalPrimaryGroupsWithMoreThan2Children}`
+  );
+  console.log(
+    `  Child Group Extraction Required: ${basicComparison.childGroupExtraction.extractionRequired}`
+  );
+
+  return basicComparison;
+}

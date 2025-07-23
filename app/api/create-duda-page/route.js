@@ -21,10 +21,16 @@ import {
 } from "./parseAboutHtmlPage";
 import {
   compareStructures,
+  compareStructuresWithChildGroupExtraction,
   extractPrimaryBatchGroups,
   extractFlexStructureGroups,
   printStructureExplanation,
 } from "./compareStructure";
+import {
+  extractFlexStructureIdsForChildGroups,
+  processChildGroupExtractions,
+  addChildGroup,
+} from "./addChildFlexStructure";
 import { handleChildDeletions } from "./deleteColumn";
 import {
   printSectionDetailsFromDeletionResult,
@@ -573,6 +579,7 @@ export async function POST(request) {
     // Step 9b: STRUCTURE COMPARISON - Compare Primary Batch with Flex Structure (PARENT GROUPS ONLY)
     console.log("\n=== STEP 9B: STRUCTURE COMPARISON (PARENT GROUPS ONLY) ===");
     let structureComparison = null;
+    let childGroupExtractionResult = null;
 
     if (primaryBatchBody && updatedFlexStructureData) {
       console.log(
@@ -597,11 +604,33 @@ export async function POST(request) {
           "Flex Structure (Parent Groups)"
         );
 
-        // Compare both structures (parent groups only)
-        structureComparison = compareStructures(
+        // Compare both structures with enhanced child group extraction
+        structureComparison = compareStructuresWithChildGroupExtraction(
           primaryBatchBody,
           updatedFlexStructureData
         );
+
+        // Check if child group extraction is required
+        if (structureComparison.childGroupExtraction.extractionRequired) {
+          console.log("\n=== CHILD GROUP EXTRACTION TRIGGERED ===");
+          console.log(
+            `Primary Direct Children: ${structureComparison.summary.primaryDirectChildren}`
+          );
+          console.log(
+            `Flex Direct Children: ${structureComparison.summary.flexDirectChildren}`
+          );
+
+          // Process child group extractions
+          childGroupExtractionResult = processChildGroupExtractions(
+            updatedFlexStructureData,
+            structureComparison
+          );
+
+          console.log(
+            "Child Group Extraction Result:",
+            JSON.stringify(childGroupExtractionResult, null, 2)
+          );
+        }
 
         console.log(
           "Structure Comparison API Response (Parent Groups):",
@@ -615,11 +644,16 @@ export async function POST(request) {
                 structureComparison.summary.primaryBatchGroups,
               flexStructureParentGroups:
                 structureComparison.summary.flexStructureGroups,
+              primaryDirectChildren:
+                structureComparison.summary.primaryDirectChildren,
+              flexDirectChildren:
+                structureComparison.summary.flexDirectChildren,
               matchStatus: structureComparison.summary.matchStatus,
               sectionDifference: structureComparison.summary.sectionDifference,
               parentGroupDifference:
                 structureComparison.summary.groupDifference,
               parentGroupDetails: structureComparison.parentGroupDetails || [],
+              childGroupExtraction: structureComparison.childGroupExtraction,
             },
             null,
             2
@@ -639,9 +673,17 @@ export async function POST(request) {
             flexStructureSections: 0,
             primaryBatchGroups: 0,
             flexStructureGroups: 0,
+            primaryDirectChildren: 0,
+            flexDirectChildren: 0,
             matchStatus: "ERROR",
             sectionDifference: 0,
             groupDifference: 0,
+          },
+          childGroupExtraction: {
+            triggered: false,
+            extractionRequired: false,
+            sectionsRequiringChildGroups: 0,
+            summary: "Error occurred during comparison",
           },
         };
       }
@@ -657,13 +699,22 @@ export async function POST(request) {
           flexStructureSections: 0,
           primaryBatchGroups: 0,
           flexStructureGroups: 0,
+          primaryDirectChildren: 0,
+          flexDirectChildren: 0,
           matchStatus: "NOT_TRIGGERED",
           sectionDifference: 0,
           groupDifference: 0,
         },
+        childGroupExtraction: {
+          triggered: false,
+          extractionRequired: false,
+          sectionsRequiringChildGroups: 0,
+          summary: "Comparison not triggered",
+        },
       };
     }
-    // Calculate total direct children from all sections
+
+    // Calculate total direct children from all sections (existing logic maintained)
     const primaryTotalDirectChildren =
       structureComparison?.primaryBatch?.sections?.reduce(
         (sum, section) =>
@@ -685,7 +736,121 @@ export async function POST(request) {
           ),
         0
       ) || 0;
+    // Step 9.1: ADD CHILD GROUPS IF NEEDED
+    console.log("\n=== STEP 9.1: ADDING CHILD GROUPS IF NEEDED ===");
+    let childGroupAdditionResult = null;
 
+    if (
+      childGroupExtractionResult &&
+      childGroupExtractionResult.extractedIds &&
+      childGroupExtractionResult.extractedIds.length > 0
+    ) {
+      console.log(
+        "Child group extraction found sections requiring additional groups"
+      );
+
+      try {
+        // Process each section that needs child groups
+        const additionResults = [];
+
+        for (const extractedSection of childGroupExtractionResult.extractedIds) {
+          console.log(`\nProcessing section ${extractedSection.sectionIndex}:`);
+          console.log(`  Parent Group ID: ${extractedSection.parentGroupId}`);
+          console.log(
+            `  Current Child Groups: ${extractedSection.allChildGroupIds.length}`
+          );
+
+          // Add primary/flex children counts to the extracted section data
+          const sectionComparison =
+            structureComparison.comparison.sectionBySection[
+              extractedSection.sectionIndex - 1
+            ];
+          if (sectionComparison && sectionComparison.parentGroupDetails) {
+            const parentGroupDetail =
+              sectionComparison.parentGroupDetails[
+                extractedSection.parentGroupIndex
+              ];
+            if (parentGroupDetail) {
+              extractedSection.primaryDirectChildren =
+                parentGroupDetail.primaryDirectChildren;
+              extractedSection.flexDirectChildren =
+                parentGroupDetail.flexDirectChildren;
+            }
+          }
+
+          // Only add child groups if primary has more children than flex
+          if (
+            extractedSection.primaryDirectChildren >
+            extractedSection.flexDirectChildren
+          ) {
+            console.log(
+              `  Adding child groups: Primary(${extractedSection.primaryDirectChildren}) > Flex(${extractedSection.flexDirectChildren})`
+            );
+
+            const addResult = await addChildGroup(
+              extractedSection,
+              uuid,
+              pageId
+            );
+            additionResults.push({
+              sectionIndex: extractedSection.sectionIndex,
+              result: addResult,
+            });
+
+            console.log(
+              `  ✅ Added ${addResult.childGroupsAdded} child group(s) for section ${extractedSection.sectionIndex}`
+            );
+          } else {
+            console.log(
+              `  ⏭️  No child groups needed for section ${extractedSection.sectionIndex}`
+            );
+          }
+        }
+
+        childGroupAdditionResult = {
+          success: true,
+          sectionsProcessed: childGroupExtractionResult.extractedIds.length,
+          sectionsModified: additionResults.length,
+          additionResults: additionResults,
+          totalChildGroupsAdded: additionResults.reduce(
+            (sum, result) => sum + (result.result.childGroupsAdded || 0),
+            0
+          ),
+          processedAt: new Date().toISOString(),
+        };
+
+        console.log("✅ Child group addition completed successfully");
+        console.log(
+          `  Sections processed: ${childGroupAdditionResult.sectionsProcessed}`
+        );
+        console.log(
+          `  Sections modified: ${childGroupAdditionResult.sectionsModified}`
+        );
+        console.log(
+          `  Total child groups added: ${childGroupAdditionResult.totalChildGroupsAdded}`
+        );
+      } catch (error) {
+        console.error("❌ Error during child group addition:", error);
+        childGroupAdditionResult = {
+          success: false,
+          error: error.message,
+          sectionsProcessed: 0,
+          sectionsModified: 0,
+          totalChildGroupsAdded: 0,
+          processedAt: new Date().toISOString(),
+        };
+      }
+    } else {
+      console.log("No child group additions needed");
+      childGroupAdditionResult = {
+        success: true,
+        message: "No child group additions required",
+        sectionsProcessed: 0,
+        sectionsModified: 0,
+        totalChildGroupsAdded: 0,
+        processedAt: new Date().toISOString(),
+      };
+    }
     // Step 9c: CHILD DELETION OPERATIONS
     console.log("\n=== STEP 9C: CHILD DELETION OPERATIONS ===");
     let deleteOperationsResult = null;
@@ -1092,6 +1257,8 @@ export async function POST(request) {
         // Renamed: updatedFlexStructure is now flexStructure
         flexStructure: updatedFlexStructureData,
         structureComparison: structureComparison,
+        childGroupExtractionResult: childGroupExtractionResult,
+        childGroupAdditionResult: childGroupAdditionResult,
         deleteOperations: deleteOperationsResult,
         // Comparison data
         flexStructureComparison: {
@@ -1241,6 +1408,7 @@ export async function POST(request) {
                 triggered: false,
                 reason: "No primary batch body provided",
               },
+          // Summary (updated with enhanced data)
           structureComparisonSummary: {
             triggered:
               !!structureComparison &&
@@ -1255,9 +1423,13 @@ export async function POST(request) {
               structureComparison?.summary?.primaryBatchGroups || 0,
             flexStructureGroups:
               structureComparison?.summary?.flexStructureGroups || 0,
-            // Add these new fields for total direct children
+            // Enhanced direct children fields
             primaryTotalDirectChildren: primaryTotalDirectChildren,
             flexTotalDirectChildren: flexTotalDirectChildren,
+            primaryDirectChildren:
+              structureComparison?.summary?.primaryDirectChildren || 0,
+            flexDirectChildren:
+              structureComparison?.summary?.flexDirectChildren || 0,
             directChildrenMatch:
               primaryTotalDirectChildren === flexTotalDirectChildren,
             directChildrenDifference: Math.abs(
@@ -1278,6 +1450,24 @@ export async function POST(request) {
               structureComparison?.comparison?.sectionBySection?.filter(
                 (s) => s.status === "MISMATCH"
               ).length || 0,
+            // Child group extraction summary
+            childGroupExtractionTriggered:
+              structureComparison?.childGroupExtraction?.triggered || false,
+            sectionsRequiringChildGroups:
+              structureComparison?.childGroupExtraction
+                ?.sectionsRequiringChildGroups || 0,
+            totalParentGroupsNeedingChildren:
+              structureComparison?.childGroupExtraction
+                ?.totalParentGroupsNeedingChildren || 0,
+            extractedSectionsCount:
+              childGroupExtractionResult?.extractedSections || 0,
+
+            childGroupAdditionTriggered:
+              childGroupAdditionResult?.success || false,
+            totalChildGroupsAdded:
+              childGroupAdditionResult?.totalChildGroupsAdded || 0,
+            sectionsModifiedWithChildGroups:
+              childGroupAdditionResult?.sectionsModified || 0,
           },
 
           deleteOperations: {
