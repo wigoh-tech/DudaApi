@@ -1226,6 +1226,98 @@ export async function POST(request) {
       };
     }
 
+    // Step 9e: FINAL FLEX STRUCTURE EXTRACTION AFTER ALL OPERATIONS
+    console.log("\n=== STEP 9e: FINAL FLEX STRUCTURE EXTRACTION ===");
+    let finalFlexStructureData = null;
+    let finalExtractedIds = null;
+
+    try {
+      console.log("✅ Getting final flex structure after all operations...");
+
+      // Add delay to ensure all previous operations are processed
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      // Get final flex structure
+      finalFlexStructureData = await getFlexStructure(uuid, alias);
+      console.log("✅ Final Flex Structure API triggered successfully");
+      console.log(
+        "Final Flex Structure API Response:",
+        JSON.stringify(finalFlexStructureData, null, 2)
+      );
+
+      // Extract hierarchical IDs with dynamic child groups from final flex structure
+      finalExtractedIds = extractHierarchicalIds(finalFlexStructureData);
+      console.log(
+        "Final Extracted Hierarchical IDs with Dynamic Child Groups:",
+        finalExtractedIds
+      );
+
+      // Enhanced logging for final extracted IDs
+      console.log("\n=== FINAL HIERARCHICAL STRUCTURE BREAKDOWN ===");
+      finalExtractedIds.forEach((section, index) => {
+        console.log(`\n--- Section ${index + 1} ---`);
+        console.log(`Element ID: ${section.elementId}`);
+        console.log(`Section ID: ${section.sectionId}`);
+        console.log(`Grid ID: ${section.gridId}`);
+        console.log(`Parent Group ID: ${section.parentGroupId}`);
+        console.log(`Total Child Groups: ${section.totalChildGroups}`);
+
+        if (section.totalChildGroups > 0) {
+          console.log("Child Groups:");
+          Object.entries(section.childGroups).forEach(([key, value]) => {
+            console.log(`  ${key}: ${value}`);
+          });
+        } else {
+          console.log("No child groups found");
+        }
+      });
+
+      // Create a summary of all child group IDs across all sections
+      const allChildGroupIds = [];
+      const childGroupSummary = {
+        totalSections: finalExtractedIds.length,
+        sectionsWithChildGroups: 0,
+        totalChildGroups: 0,
+        childGroupsBySection: [],
+      };
+
+      finalExtractedIds.forEach((section, sectionIndex) => {
+        if (section.totalChildGroups > 0) {
+          childGroupSummary.sectionsWithChildGroups++;
+          childGroupSummary.totalChildGroups += section.totalChildGroups;
+
+          const sectionChildGroups = {
+            sectionIndex: sectionIndex + 1,
+            sectionId: section.sectionId,
+            childGroupCount: section.totalChildGroups,
+            childGroupIds: Object.values(section.childGroups),
+          };
+
+          childGroupSummary.childGroupsBySection.push(sectionChildGroups);
+          allChildGroupIds.push(...Object.values(section.childGroups));
+        }
+      });
+
+      console.log("\n=== CHILD GROUP SUMMARY ===");
+      console.log(
+        "Child Group Summary:",
+        JSON.stringify(childGroupSummary, null, 2)
+      );
+      console.log("All Child Group IDs (Flat List):", allChildGroupIds);
+
+      console.log("✅ Final flex structure extraction completed successfully");
+    } catch (error) {
+      console.error("❌ Error getting final flex structure:", error);
+      console.error("Error stack:", error.stack);
+
+      // Fallback to previous data if final extraction fails
+      finalFlexStructureData =
+        updatedFlexStructureData || initialFlexStructureData;
+      finalExtractedIds = updatedExtractedIds || initialExtractedIds;
+
+      console.log("Using fallback flex structure data due to error");
+    }
+
     // Step 10: Execute batch operations section by section with updated data
     console.log("\n=== STEP 10: BATCH OPERATIONS ===");
     const batchResults = await executeBatchOperationsSectionBySection(

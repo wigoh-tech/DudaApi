@@ -1,4 +1,4 @@
-    import { DUDA_API_CONFIG } from "../../../lib/dudaApi";
+import { DUDA_API_CONFIG } from "../../../lib/dudaApi";
 
 export async function getFlexStructure(uuid, alias) {
   const timestamp = Date.now();
@@ -32,8 +32,8 @@ export function extractHierarchicalIds(flexData) {
       sectionId: null,
       gridId: null,
       parentGroupId: null,
-      childGroup1Id: null,
-      childGroup2Id: null,
+      childGroups: {},
+      totalChildGroups: 0
     }];
   }
 
@@ -48,8 +48,8 @@ export function extractHierarchicalIds(flexData) {
       sectionId: null,
       gridId: null,
       parentGroupId: null,
-      childGroup1Id: null,
-      childGroup2Id: null,
+      childGroups: {},
+      totalChildGroups: 0
     }];
   }
 
@@ -64,8 +64,8 @@ export function extractHierarchicalIds(flexData) {
           sectionId: element.id,
           gridId: null,
           parentGroupId: null,
-          childGroup1Id: null,
-          childGroup2Id: null,
+          childGroups: {},
+          totalChildGroups: 0
         };
 
         if (element.children && element.children.length > 0) {
@@ -80,14 +80,18 @@ export function extractHierarchicalIds(flexData) {
                   if (grandChild && grandChild.type === "group") {
                     sectionStructure.parentGroupId = grandChild.id;
 
+                    // Extract all child groups dynamically
                     if (grandChild.children && grandChild.children.length > 0) {
-                      grandChild.children.forEach((greatGrandChildId, index) => {
+                      let childGroupIndex = 1;
+                      grandChild.children.forEach((greatGrandChildId) => {
                         const greatGrandChild = elements[greatGrandChildId];
                         if (greatGrandChild && greatGrandChild.type === "group") {
-                          if (index === 0) sectionStructure.childGroup1Id = greatGrandChild.id;
-                          else if (index === 1) sectionStructure.childGroup2Id = greatGrandChild.id;
+                          const childGroupKey = `childGroup${childGroupIndex}Id`;
+                          sectionStructure.childGroups[childGroupKey] = greatGrandChild.id;
+                          childGroupIndex++;
                         }
                       });
+                      sectionStructure.totalChildGroups = childGroupIndex - 1;
                     }
                   }
                 });
@@ -106,7 +110,7 @@ export function extractHierarchicalIds(flexData) {
     sectionId: null,
     gridId: null,
     parentGroupId: null,
-    childGroup1Id: null,
-    childGroup2Id: null,
+    childGroups: {},
+    totalChildGroups: 0
   }];
 }
