@@ -18,7 +18,7 @@ export async function triggerInsertApiForSections(jsonInput, uuid, alias) {
   console.log(`Total sections in input: ${sectionCount}`);
 
   // Calculate how many times to trigger the API (2 sections per call)
-  const triggerCount = Math.ceil(sectionCount / 2);
+  const triggerCount = sectionCount - 2;
   console.log(`API will be triggered ${triggerCount} times`);
 
   const responses = [];
@@ -203,29 +203,28 @@ async function callInsertApi(uuid, sections, batchNumber, insertAfterId) {
     const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
-        "content-type": "application/json",
         accept: "*/*",
         "accept-language": "en-US,en;q=0.9",
         baggage:
-          "sentry-environment=direct,sentry-release=production_5632,sentry-public_key=0d2f170da99ddd8d3befc10a7f4ddd29,sentry-trace_id=f67a5356b5654184aa10a2daf653ca61,sentry-sampled=true,sentry-sample_rand=0.043337209731944104,sentry-sample_rate=0.1",
+          "sentry-environment=direct,sentry-release=production_5747,sentry-public_key=0d2f170da99ddd8d3befc10a7f4ddd29,sentry-trace_id=67679bdf1fc84759b30dc27b9861d99c,sentry-sampled=true,sentry-sample_rand=0.055016467983737494,sentry-sample_rate=0.1",
         "content-type": "application/json",
-        dm_loc: "/home/site/41e002a2/empty",
+        dm_loc: "/home/site/41e002a2/empty9ddba5eb",
         origin: "https://my.duda.co",
         priority: "u=1, i",
-        referer: "https://my.duda.co/home/site/41e002a2/empty",
+        referer: "https://my.duda.co/home/site/41e002a2/empty9ddba5eb",
         "sec-ch-ua":
-          '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
+          '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": '"Linux"',
         "sec-fetch-dest": "empty",
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-origin",
-        "sentry-trace": "f67a5356b5654184aa10a2daf653ca61-b642d7756eb277e2-1",
+        "sentry-trace": "67679bdf1fc84759b30dc27b9861d99c-a524fd17b9b92576-1",
         "user-agent":
-          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
         "x-requested-with": "XMLHttpRequest",
         cookie:
-          "_gd_visitor=40d0bd8f-b2b9-4fcf-86ea-2accc484ed78; language=en; landingPage=/login; deviceView=tablet; first_conversion_source_touchpoints=direct; first_conversion_medium_touchpoints=null; first_conversion_campaign_touchpoints=null; first_conversion_term_touchpoints=null; first_conversion_content_touchpoints=null; isFirstSessionVisit=false; _fbp=fb.1.1752547231596.871167907101487908; _ce.clock_data=36%2C49.37.222.125%2C1%2Ccd5d5f3ff8f374827248e13d2f7d64ca%2CChrome%2CIN; hubspotutk=9af6036ce59b5aa15aa544ef46b86533; _dm_remember_me=RXlNeEhzbzZkZ1BMemlrRVZ0QVNMZyUzRCUzRDpBWmt0aVV4UnFjckx2bVZSMWtiU2hnJTNEJTNE; account_uuid=41ea951a2a304fa38d59162280dae36b; dm_ac_tokens=ZLDMCMDy3OL75EfI6RdDAtbVp0BGN0Sz7Ls8wxnYUOi4ozbZmsPI5A==; _conv_v=vi%3A1*sc%3A1*cs%3A1752547229*fs%3A1752547229*pv%3A2*exp%3A%7B%7D*seg%3A%7B%7D; _ce.s=v~8371c5812a5a58ab73d92049be54c44bf1c24111~lcw~1752547247994~vir~new~lva~1752547231583~vpv~0~v11.cs~268877~v11.s~13b6d9c0-6125-11f0-9f8c-cdb2b9925d08~v11.vs~8371c5812a5a58ab73d92049be54c44bf1c24111~v11.fsvd~eyJ1cmwiOiJkdWRhLmNvL2xvZ2luIiwicmVmIjoiIiwidXRtIjpbXX0%3D~v11.sla~1752547232096~v11ls~13b6d9c0-6125-11f0-9f8c-cdb2b9925d08~gtrk.la~md3xdwiw~lcw~1752547255016; _gid=GA1.2.1356213168.1752547256; __zlcmid=1RsneD9izLkntAc; AWSALBTG=TuqLlYPsCO6gn/u4pAFCLXlnquG5PnmZbJ4wTjmx9Eq9DwmRscYwpO3gEEx4+sTmJkwoQFOOzDlfmOaosT9OKLcLSvIw/SAr9y7Qk5OR7xUgrWFZrUqLrXeHzhjYRXMtZBcTXV4nvVjAoZU08KYtzY2o7+rKezD32dKXI80GR5+JM5SthFo=; JSESSIONID=E44B3F61BD17A855B74AC16CBD5E6D33; _dm_account=%7B%22name%22%3A%22misham%40wigoh.ai%22%2C%22uuid%22%3A%2241ea951a2a304fa38d59162280dae36b%22%2C%22gaType%22%3A%22SMB%22%2C%22lastLogin%22%3A1752631651000%7D; _gcl_au=1.1.186818603.1752547231; _ga=GA1.1.f3820429-e039-46ef-8ab7-5811267bb6f3; IR_gbd=duda.co; IR_13628=1752631665584%7C0%7C1752631665584%7C%7C; __hstc=244318362.9af6036ce59b5aa15aa544ef46b86533.1752547233092.1752573679532.1752631666069.6; __hssrc=1; __hssc=244318362.1.1752631666069; _uetsid=13233b00612511f0ae71174240b8f124; _uetvid=24df0c103b8511f0b71eb52d29352553; _gd_session=3d145a24-4936-4886-8aca-818d32f14f1f; _dm_se_token_me=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhY2NvdW50VXVpZCI6IjQxZWE5NTFhMmEzMDRmYTM4ZDU5MTYyMjgwZGFlMzZiIiwiYWNjb3VudE5hbWUiOiJtaXNoYW1Ad2lnb2guYWkiLCJjcmVhdGlvblRpbWUiOjE3NTI2MzIwMDcyNDgsImV4cCI6MTc1MjYzNDQwN30.4gu9i44JtItthANdV4rbFPVetOgax-wBL1zrA4zAzNU; AWSALB=yB/ZtzUcnVGRWo53ouujw8wBrwEo5yiPi+ea3Iq3qDUrVgda6McC4iIkgf6+5S/q06SSnqixqTU6IEco3dY1FmzJ+A4HO/5ERJuWXXVk0lK9J36uCIA+npQ/AVQ+; _ga_GFZCS4CS4Q=GS2.1.s1752631665$o2$g1$t1752632009$j60$l0$h0",
+          "_gd_visitor=40d0bd8f-b2b9-4fcf-86ea-2accc484ed78; language=en; landingPage=/login; _fbp=fb.1.1752547231596.871167907101487908; hubspotutk=9af6036ce59b5aa15aa544ef46b86533; account_uuid=41ea951a2a304fa38d59162280dae36b; dm_ac_tokens=ZLDMCMDy3OL75EfI6RdDAtbVp0BGN0Sz7Ls8wxnYUOi4ozbZmsPI5A==; __zlcmid=1RsneD9izLkntAc; __adroll_fpc=089d3b7c8c30a01d5551acf4c8db604c-1752719288427; __ar_v4=LVLOIN3JF5FT3CD5CBETI7%3A20250818%3A2%7C5PYFNWAESVGU5BU47WLRIT%3A20250818%3A2%7CNK6BCP2ZPJC2BEAS7JMXC2%3A20250818%3A2; dm_ac_tokens=ZLDMCMDy3OL75EfI6RdDAtbVp0BGN0Sz7Ls8wxnYUOi4ozbZmsPI5A==; _dm_ac_tokens=ZLDMCMDy3OL75EfI6RdDAtbVp0BGN0Sz7Ls8wxnYUOi4ozbZmsPI5A==; first_conversion_medium_touchpoints=null%3B%20referral%3B%20referral; first_conversion_campaign_touchpoints=null%3B%20null%3B%20null; first_conversion_term_touchpoints=null%3B%20null%3B%20null; first_conversion_content_touchpoints=null%3B%20null%3B%20null; _ga_9WXYK3PMB6=GS2.1.s1756184680$o1$g0$t1756184685$j55$l0$h0; AWSALBTG=YQuvdWvYOk5O+BlITPK77RGHQb8y0GDB4kDtpHT2NfT5sEInyUhZRPOOEXoNwbXrLC4Vt4iWOIGyUnCvVYki8fDz40j/hFKmZV1aXe1w996dhILpX64QCHcxwM+BaecUhWlMwrgJ828WmoLQNasxmvcPLy+GUjrebKWqb+nODnKzxJeDItQ=; _gid=GA1.2.2014990144.1756348807; __hssrc=1; IR_gbd=duda.co; _gd_session=5f01d825-6c06-4051-8746-c5c1ff981ff6; deviceView=desktop; first_conversion_source_touchpoints=direct%3B%20127.0.0.1%3B%20claude.; isFirstSessionVisit=false; cebs=1; _ce.clock_data=46%2C49.37.222.205%2C1%2C6ffa570f521e87e65c529e15a5aaac67%2CChrome%2CIN; _dm_remember_me=ZlNaUVA4T3djOHR3c1dYcEdON3kwUSUzRCUzRDo3RnNFMjRoVjlydUgxWjdPMklWYW5BJTNEJTNE; cebsp_=2; _ce.s=v~8371c5812a5a58ab73d92049be54c44bf1c24111~lcw~1756368199998~vir~returning~lva~1756368196156~vpv~5~v11ls~7445b440-83e5-11f0-8d62-8547177dbc15~v11.cs~268877~v11.s~7445b440-83e5-11f0-8d62-8547177dbc15~v11.vs~8371c5812a5a58ab73d92049be54c44bf1c24111~v11.fsvd~eyJ1cmwiOiJkdWRhLmNvL2xvZ2luIiwicmVmIjoiaHR0cHM6Ly9teS5kdWRhLmNvLyIsInV0bSI6W119~v11.sla~1756368197003~gtrk.la~mev4a3cu~lcw~1756368203646; _conv_r=s%3Awww.duda.co*m%3Areferral*t%3A*c%3A; __hstc=244318362.9af6036ce59b5aa15aa544ef46b86533.1752547233092.1756372016075.1756376458580.168; _dm_account=%7B%22name%22%3A%22misham%40wigoh.ai%22%2C%22uuid%22%3A%2241ea951a2a304fa38d59162280dae36b%22%2C%22gaType%22%3A%22SMB%22%2C%22lastLogin%22%3A1756376453000%7D; JSESSIONID=07EE7998A31C15EE0CD61470159DCE2A; _gcl_au=1.1.186818603.1752547231; _ga=GA1.1.b4287402-ca49-4b83-901e-0a7c52f82c1a; _conv_v=vi%3A1*sc%3A208*cs%3A1756376459*fs%3A1752547229*pv%3A601*exp%3A%7B100254142.%7Bv.1002832145-g.%7B%7D%7D%7D*seg%3A%7B%7D*ps%3A1756372017; _conv_s=si%3A208*sh%3A1756376459063-0.6210584439652719*pv%3A3; _uetsid=55d25e5083b811f0bd6e570fa1003a5d; _uetvid=24df0c103b8511f0b71eb52d29352553; IR_13628=1756377117656%7C0%7C1756377117656%7C%7C; __hssc=244318362.3.1756376458580; _ga_GFZCS4CS4Q=GS2.1.s1756348817$o35$g1$t1756377306$j60$l0$h0; AWSALB=nG/v0qKWmOwv5NIdAa6lVrpHPfvvtDj+CcnV0qhZqcuPXf8HwkR5nUcoLC9kOkwZlnB0yzvFNX2LBeX6SF6hPPS4g4aLCAcnVniFRUEFFZQhozhPKOnP/JkBTFrK; _dm_se_token_me=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhY2NvdW50VXVpZCI6IjQxZWE5NTFhMmEzMDRmYTM4ZDU5MTYyMjgwZGFlMzZiIiwiYWNjb3VudE5hbWUiOiJtaXNoYW1Ad2lnb2guYWkiLCJjcmVhdGlvblRpbWUiOjE3NTYzNzc0NDQ1NjQsImV4cCI6MTc1NjM3OTg0NH0.CUHqbalevoDtEQjQ_CqeAgaVK25S09RCPwViXmpobc0",
       },
       body: JSON.stringify(requestBody),
     });
@@ -234,25 +233,84 @@ async function callInsertApi(uuid, sections, batchNumber, insertAfterId) {
     console.log(`\n📥 INSERT API RESPONSE STATUS FOR BATCH ${batchNumber}:`);
     console.log("============================================");
     console.log(`Status: ${response.status} ${response.statusText}`);
+    console.log(`Content-Type: ${response.headers.get("content-type")}`);
     console.log(`Headers:`, Object.fromEntries(response.headers.entries()));
     console.log("============================================");
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+    // Check content type before parsing
+    const contentType = response.headers.get("content-type");
 
-      // NEW: Print detailed error response
-      console.log(`\n❌ INSERT API ERROR RESPONSE FOR BATCH ${batchNumber}:`);
-      console.log("===============================================");
-      console.log(`Status: ${response.status}`);
-      console.log(`Status Text: ${response.statusText}`);
-      console.log(`Error Data:`, JSON.stringify(errorData, null, 2));
-      console.log("===============================================");
+    if (!response.ok) {
+      let errorData = {};
+
+      try {
+        if (contentType && contentType.includes("application/json")) {
+          errorData = await response.json();
+        } else {
+          // If it's HTML or other content, get it as text
+          const errorText = await response.text();
+          console.log(`\n❌ NON-JSON ERROR RESPONSE FOR BATCH ${batchNumber}:`);
+          console.log("===============================================");
+          console.log(`Status: ${response.status}`);
+          console.log(`Status Text: ${response.statusText}`);
+          console.log(`Content Type: ${contentType}`);
+          console.log(
+            `Error Content (first 500 chars):`,
+            errorText.substring(0, 500)
+          );
+          console.log("===============================================");
+
+          // Check if it's a login page redirect
+          if (errorText.includes("<!DOCTYPE") || errorText.includes("<html")) {
+            throw new Error(
+              `API returned HTML instead of JSON. This usually means authentication failed or session expired. Status: ${response.status}`
+            );
+          }
+
+          errorData = {
+            message: `Non-JSON response: ${errorText.substring(0, 200)}`,
+          };
+        }
+      } catch (parseError) {
+        console.error(
+          `Error parsing error response for batch ${batchNumber}:`,
+          parseError
+        );
+        errorData = {
+          message: `Failed to parse error response: ${parseError.message}`,
+        };
+      }
 
       throw new Error(
         `API call failed with status ${response.status}: ${
           errorData.message || response.statusText
         }`
       );
+    }
+
+    // Check if response is JSON before parsing
+    if (!contentType || !contentType.includes("application/json")) {
+      const responseText = await response.text();
+      console.log(`\n⚠️ NON-JSON SUCCESS RESPONSE FOR BATCH ${batchNumber}:`);
+      console.log("==================================================");
+      console.log(`Content Type: ${contentType}`);
+      console.log(
+        `Response Content (first 500 chars):`,
+        responseText.substring(0, 500)
+      );
+      console.log("==================================================");
+
+      // Check if it's HTML (likely a login page)
+      if (
+        responseText.includes("<!DOCTYPE") ||
+        responseText.includes("<html")
+      ) {
+        throw new Error(
+          "API returned HTML instead of JSON. This usually means authentication failed or session expired."
+        );
+      }
+
+      throw new Error(`Expected JSON response but got: ${contentType}`);
     }
 
     const data = await response.json();

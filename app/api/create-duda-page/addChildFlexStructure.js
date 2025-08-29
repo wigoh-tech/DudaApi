@@ -1,5 +1,3 @@
-// addChildFlexStructure.js
-// Function to extract IDs from Flex Structure sections when primaryDirectChildren > 2
 import { DUDA_API_CONFIG } from "../../../lib/dudaApi";
 /**
  * Extracts all relevant IDs from Flex Structure sections when primary has more children
@@ -99,8 +97,6 @@ function extractSectionIds(section, sectionIndex, parentGroupIndex) {
     sectionId: section.id || null,
     gridId: null,
     parentGroupId: null,
-    childGroup1Id: null,
-    childGroup2Id: null,
     allChildGroupIds: [],
     allElementIds: Object.keys(elements),
     extractedAt: new Date().toISOString(),
@@ -136,18 +132,19 @@ function extractSectionIds(section, sectionIndex, parentGroupIndex) {
         .map((childId) => elements[childId])
         .filter((child) => child && child.type === "group");
 
+      // Add existing child groups
       childGroups.forEach((childGroup, index) => {
         sectionIds.allChildGroupIds.push(childGroup.id);
-        if (index === 0) {
-          sectionIds.childGroup1Id = childGroup.id;
-          console.log(`  Found Child Group 1: ${childGroup.id}`);
-        } else if (index === 1) {
-          sectionIds.childGroup2Id = childGroup.id;
-          console.log(`  Found Child Group 2: ${childGroup.id}`);
-        }
+        
+        // Dynamically create childGroupXId properties
+        const childGroupKey = `childGroup${index + 1}Id`;
+        sectionIds[childGroupKey] = childGroup.id;
+        
+        console.log(`  Found Child Group ${index + 1}: ${childGroup.id}`);
       });
 
       console.log(`  Total Child Groups Found: ${childGroups.length}`);
+      console.log(`  Total Child Groups Available: ${sectionIds.allChildGroupIds.length}`);
     }
   } else if (parentGroups.length > 0) {
     // Fallback to first parent group if index doesn't match
@@ -156,17 +153,88 @@ function extractSectionIds(section, sectionIndex, parentGroupIndex) {
     console.log(`  Using First Available Parent Group: ${firstParentGroup.id}`);
   }
 
-  // Log summary
+  // Dynamic generation of missing child group IDs if needed
+  // This ensures we always have the required number of child groups
+  const existingChildGroupCount = sectionIds.allChildGroupIds.length;
+  const minimumChildGroups = 3; // Set minimum or make this configurable
+  
+  if (existingChildGroupCount < minimumChildGroups) {
+    const groupsToGenerate = minimumChildGroups - existingChildGroupCount;
+    console.log(`  Generating ${groupsToGenerate} additional child groups...`);
+    
+    for (let i = 0; i < groupsToGenerate; i++) {
+      const generatedId = `nested-group-${existingChildGroupCount + i + 1}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      sectionIds.allChildGroupIds.push(generatedId);
+      
+      // Dynamically create childGroupXId property
+      const childGroupKey = `childGroup${existingChildGroupCount + i + 1}Id`;
+      sectionIds[childGroupKey] = generatedId;
+      
+      console.log(`  Generated Child Group ${existingChildGroupCount + i + 1}: ${generatedId}`);
+    }
+  }
+
+  // Log summary with all dynamically created child group IDs
   console.log(`  Section IDs Summary:`);
   console.log(`    Element ID: ${sectionIds.elementId}`);
   console.log(`    Section ID: ${sectionIds.sectionId}`);
   console.log(`    Grid ID: ${sectionIds.gridId}`);
   console.log(`    Parent Group ID: ${sectionIds.parentGroupId}`);
-  console.log(`    Child Group 1 ID: ${sectionIds.childGroup1Id}`);
-  console.log(`    Child Group 2 ID: ${sectionIds.childGroup2Id}`);
+  
+  // Log all child group IDs dynamically
+  Object.keys(sectionIds).forEach(key => {
+    if (key.startsWith('childGroup') && key.endsWith('Id')) {
+      console.log(`    ${key}: ${sectionIds[key]}`);
+    }
+  });
+  
   console.log(`    Total Child Groups: ${sectionIds.allChildGroupIds.length}`);
 
   return sectionIds;
+}
+
+/**
+ * Helper function to get all child group IDs from sectionIds object
+ * @param {Object} sectionIds - The section IDs object
+ * @returns {Array} - Array of all child group IDs with their keys
+ */
+export function getAllChildGroupIds(sectionIds) {
+  const childGroupIds = [];
+  
+  Object.keys(sectionIds).forEach(key => {
+    if (key.startsWith('childGroup') && key.endsWith('Id') && sectionIds[key]) {
+      childGroupIds.push({
+        key: key,
+        id: sectionIds[key],
+        index: parseInt(key.replace('childGroup', '').replace('Id', ''))
+      });
+    }
+  });
+  
+  // Sort by index to maintain order
+  return childGroupIds.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * Helper function to get a specific child group ID by index
+ * @param {Object} sectionIds - The section IDs object
+ * @param {Number} index - The child group index (1-based)
+ * @returns {String|null} - The child group ID or null if not found
+ */
+export function getChildGroupIdByIndex(sectionIds, index) {
+  const key = `childGroup${index}Id`;
+  return sectionIds[key] || null;
+}
+
+/**
+ * Helper function to get the count of child groups
+ * @param {Object} sectionIds - The section IDs object
+ * @returns {Number} - The number of child groups
+ */
+export function getChildGroupCount(sectionIds) {
+  return Object.keys(sectionIds).filter(key => 
+    key.startsWith('childGroup') && key.endsWith('Id') && sectionIds[key]
+  ).length;
 }
 
 /**

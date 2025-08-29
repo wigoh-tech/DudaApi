@@ -310,6 +310,7 @@ export function createFlexStructurePayload(extractedSection) {
 }
 
 // NEW: Function to call flex structure API
+// NEW: Function to call flex structure API (FIXED VERSION)
 export async function updateFlexStructureAPI(
   pageId,
   extractedSection,
@@ -332,7 +333,6 @@ export async function updateFlexStructureAPI(
       method: "PUT",
       headers: {
         accept: "*/*",
-        accept: "*/*",
         "accept-language": "en-US,en;q=0.9",
         baggage:
           "sentry-environment=direct,sentry-release=production_5646,sentry-public_key=0d2f170da99ddd8d3befc10a7f4ddd29,sentry-trace_id=52d64bac387a48ea8603b99ee390c620,sentry-sampled=false,sentry-sample_rand=0.2088197615844395,sentry-sample_rate=0.1",
@@ -353,8 +353,9 @@ export async function updateFlexStructureAPI(
         "user-agent":
           "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
         "x-requested-with": "XMLHttpRequest",
+        // FIX: Use 'cookie' header name and the cookies parameter
         cookie:
-          "_gd_visitor=40d0bd8f-b2b9-4fcf-86ea-2accc484ed78; language=en; landingPage=/login; _fbp=fb.1.1752547231596.871167907101487908; hubspotutk=9af6036ce59b5aa15aa544ef46b86533; account_uuid=41ea951a2a304fa38d59162280dae36b; dm_ac_tokens=ZLDMCMDy3OL75EfI6RdDAtbVp0BGN0Sz7Ls8wxnYUOi4ozbZmsPI5A==; __zlcmid=1RsneD9izLkntAc; __adroll_fpc=089d3b7c8c30a01d5551acf4c8db604c-1752719288427; _gid=GA1.2.886432894.1753064619; __ar_v4=LVLOIN3JF5FT3CD5CBETI7%3A20250716%3A2%7C5PYFNWAESVGU5BU47WLRIT%3A20250716%3A2%7CNK6BCP2ZPJC2BEAS7JMXC2%3A20250716%3A2; _dm_remember_me=MGZ0UVZJNGFVcjhlNUdYVkZpYXB6USUzRCUzRDpWazZ4Q2U0aTVjdDR5WVZ3OExvbzRRJTNEJTNE; deviceView=desktop; first_conversion_source_touchpoints=direct%3B%20127.0.0.1; first_conversion_medium_touchpoints=null%3B%20referral; first_conversion_campaign_touchpoints=null%3B%20null; first_conversion_term_touchpoints=null%3B%20null; first_conversion_content_touchpoints=null%3B%20null; isFirstSessionVisit=false; _ce.clock_data=44%2C49.37.220.103%2C1%2C6ffa570f521e87e65c529e15a5aaac67%2CChrome%2CIN; _ce.s=v~8371c5812a5a58ab73d92049be54c44bf1c24111~lcw~1753067721888~vir~returning~lva~1753067721040~vpv~3~v11ls~ef844c70-65e0-11f0-ba1b-bf65481c13f3~v11.cs~268877~v11.s~ef844c70-65e0-11f0-ba1b-bf65481c13f3~v11.vs~8371c5812a5a58ab73d92049be54c44bf1c24111~v11.fsvd~eyJ1cmwiOiJkdWRhLmNvL2xvZ2luL2xvZ2dlZCIsInJlZiI6Imh0dHA6Ly8xMjcuMC4wLjE6NTUwMC8iLCJ1dG0iOltdfQ%3D%3D~v11.sla~1753067721403~gtrk.la~mdcj9bc0~lcw~1753067721889; AWSALBTG=/SGxe9wPVyYNamXXPHvNDID33ptEoyf0dPUXK9XmfoRlyeVjERYG1nq+UcCbRQVr4HW6eB3e+FPTvMGadmsaAB35f+LfdzSJyD+VxoNs3i5kKQxW4Lc2K0ymOoIvkFlYjXeu/1mw2/VKq747L4Ovr/0byNq3CPTKk6FbsS/sO200V1AB4Ug=; _dm_account=%7B%22name%22%3A%22misham%40wigoh.ai%22%2C%22uuid%22%3A%2241ea951a2a304fa38d59162280dae36b%22%2C%22gaType%22%3A%22SMB%22%2C%22lastLogin%22%3A1753150853000%7D; __hstc=244318362.9af6036ce59b5aa15aa544ef46b86533.1752547233092.1753103474243.1753150867711.31; __hssrc=1; IR_gbd=duda.co; _gd_session=9b57b0db-d16b-4b86-8458-888bd088bc52; _dm_se_token_me=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhY2NvdW50VXVpZCI6IjQxZWE5NTFhMmEzMDRmYTM4ZDU5MTYyMjgwZGFlMzZiIiwiYWNjb3VudE5hbWUiOiJtaXNoYW1Ad2lnb2guYWkiLCJjcmVhdGlvblRpbWUiOjE3NTMxNTIxNzYzMjgsImV4cCI6MTc1MzE1NDU3Nn0.gmtASGc5cRi6GSE4znabzNDqiWr_5oTE5nFD8yAir_E; _gat=1; JSESSIONID=51FFD8BFA98FFFFF157D1358C7AA451B; __hssc=244318362.4.1753150867711; _gcl_au=1.1.186818603.1752547231; _ga=GA1.1.0d0dbe64-694c-4e3b-b217-1343e01cd7d2; _conv_v=vi%3A1*sc%3A33*cs%3A1753152332*fs%3A1752547229*pv%3A103*exp%3A%7B%7D*seg%3A%7B%7D*ps%3A1753150870; _conv_s=si%3A33*sh%3A1753152332187-0.005297773138133621*pv%3A2; IR_13628=1753152338925%7C0%7C1753152338925%7C%7C; _uetsid=111e26c065d611f08d90b78734fbbf70; _uetvid=24df0c103b8511f0b71eb52d29352553; _ga_GFZCS4CS4Q=GS2.1.s1753150868$o6$g1$t1753152346$j38$l0$h0; AWSALB=cnn1Ui5OVR2Qv+LopEjd1WCPQ68vjm/KtlMbuR6inpLLgIfnaP88bhO4Y8QGuSo78BBK7EYfkRQFWb4Tp0Nnivbw/z3tJnPMt05/FI4EPi7QSl+R7X4hk8/mW/3iacgdkUdeopg/V4p/oOtcs95zomV7lve0k1uFSPYznMSvDReETlW7eaZ8piXMWiI2Yg==",
+          "_gd_visitor=40d0bd8f-b2b9-4fcf-86ea-2accc484ed78; language=en; landingPage=/login; _fbp=fb.1.1752547231596.871167907101487908; hubspotutk=9af6036ce59b5aa15aa544ef46b86533; account_uuid=41ea951a2a304fa38d59162280dae36b; dm_ac_tokens=ZLDMCMDy3OL75EfI6RdDAtbVp0BGN0Sz7Ls8wxnYUOi4ozbZmsPI5A==; __zlcmid=1RsneD9izLkntAc; __adroll_fpc=089d3b7c8c30a01d5551acf4c8db604c-1752719288427; __ar_v4=LVLOIN3JF5FT3CD5CBETI7%3A20250818%3A2%7C5PYFNWAESVGU5BU47WLRIT%3A20250818%3A2%7CNK6BCP2ZPJC2BEAS7JMXC2%3A20250818%3A2; dm_ac_tokens=ZLDMCMDy3OL75EfI6RdDAtbVp0BGN0Sz7Ls8wxnYUOi4ozbZmsPI5A==; _dm_ac_tokens=ZLDMCMDy3OL75EfI6RdDAtbVp0BGN0Sz7Ls8wxnYUOi4ozbZmsPI5A==; first_conversion_medium_touchpoints=null%3B%20referral%3B%20referral; first_conversion_campaign_touchpoints=null%3B%20null%3B%20null; first_conversion_term_touchpoints=null%3B%20null%3B%20null; first_conversion_content_touchpoints=null%3B%20null%3B%20null; _ga_9WXYK3PMB6=GS2.1.s1756184680$o1$g0$t1756184685$j55$l0$h0; AWSALBTG=YQuvdWvYOk5O+BlITPK77RGHQb8y0GDB4kDtpHT2NfT5sEInyUhZRPOOEXoNwbXrLC4Vt4iWOIGyUnCvVYki8fDz40j/hFKmZV1aXe1w996dhILpX64QCHcxwM+BaecUhWlMwrgJ828WmoLQNasxmvcPLy+GUjrebKWqb+nODnKzxJeDItQ=; _gid=GA1.2.2014990144.1756348807; __hssrc=1; IR_gbd=duda.co; deviceView=desktop; first_conversion_source_touchpoints=direct%3B%20127.0.0.1%3B%20claude.; isFirstSessionVisit=false; cebs=1; _ce.clock_data=46%2C49.37.222.205%2C1%2C6ffa570f521e87e65c529e15a5aaac67%2CChrome%2CIN; _dm_remember_me=ZlNaUVA4T3djOHR3c1dYcEdON3kwUSUzRCUzRDo3RnNFMjRoVjlydUgxWjdPMklWYW5BJTNEJTNE; cebsp_=2; _ce.s=v~8371c5812a5a58ab73d92049be54c44bf1c24111~lcw~1756368199998~vir~returning~lva~1756368196156~vpv~5~v11ls~7445b440-83e5-11f0-8d62-8547177dbc15~v11.cs~268877~v11.s~7445b440-83e5-11f0-8d62-8547177dbc15~v11.vs~8371c5812a5a58ab73d92049be54c44bf1c24111~v11.fsvd~eyJ1cmwiOiJkdWRhLmNvL2xvZ2luIiwicmVmIjoiaHR0cHM6Ly9teS5kdWRhLmNvLyIsInV0bSI6W119~v11.sla~1756368197003~gtrk.la~mev4a3cu~lcw~1756368203646; _conv_r=s%3Awww.duda.co*m%3Areferral*t%3A*c%3A; __hstc=244318362.9af6036ce59b5aa15aa544ef46b86533.1752547233092.1756372016075.1756376458580.168; _gd_session=47c3606d-8309-4a85-8247-5edc3cb8be6d; _dm_account=%7B%22name%22%3A%22misham%40wigoh.ai%22%2C%22uuid%22%3A%2241ea951a2a304fa38d59162280dae36b%22%2C%22gaType%22%3A%22SMB%22%2C%22lastLogin%22%3A1756380628000%7D; JSESSIONID=7D924A7A4368741EBE9A872AE2C19BD6; _gcl_au=1.1.186818603.1752547231; __hssc=244318362.9.1756376458580; IR_13628=1756380636656%7C0%7C1756380636656%7C%7C; _uetsid=55d25e5083b811f0bd6e570fa1003a5d; _uetvid=24df0c103b8511f0b71eb52d29352553; _ga=GA1.1.40c19243-5508-4903-b427-d90457d0b930; _conv_v=vi%3A1*sc%3A209*cs%3A1756380637*fs%3A1752547229*pv%3A607*exp%3A%7B100254142.%7Bv.1002832145-g.%7B%7D%7D%7D*seg%3A%7B%7D*ps%3A1756376459; _conv_s=si%3A209*sh%3A1756380637169-0.8194378961826805*pv%3A1; _dm_se_token_me=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhY2NvdW50VXVpZCI6IjQxZWE5NTFhMmEzMDRmYTM4ZDU5MTYyMjgwZGFlMzZiIiwiYWNjb3VudE5hbWUiOiJtaXNoYW1Ad2lnb2guYWkiLCJjcmVhdGlvblRpbWUiOjE3NTYzODE0ODg1ODIsImV4cCI6MTc1NjM4Mzg4OH0.pvbboIkIzta8T7QrtFAc2fcbpeVxpQ0O6jMJxcIkKSc; _ga_GFZCS4CS4Q=GS2.1.s1756348817$o35$g1$t1756381719$j60$l0$h0; AWSALB=ReQvpYp2dH0jRMLR67ECpMrscDzjNZX6cnqal+anZYoxwjJn7Fi3CsZPBssoOi1FsRiE5MB5XfuIjfsL2X3ePIKg8VoZx81i6ZsEIi5WNYbyivyToV6ICFxZVy23",
       },
       body: JSON.stringify(payload),
     });
@@ -362,11 +363,57 @@ export async function updateFlexStructureAPI(
     const responseText = await response.text();
     const responseHeaders = Object.fromEntries(response.headers.entries());
 
+    console.log(`\n=== FLEX STRUCTURE API RESPONSE ===`);
+    console.log(`Success: ${response.ok}`);
+    console.log(`Status: ${response.status} ${response.statusText}`);
+    console.log(`Section ID: ${extractedSection.sectionId}`);
+    console.log(
+      `Raw Response (first 500 chars): ${responseText.substring(0, 500)}`
+    );
+
+    // Check if response is HTML (error page)
+    if (
+      responseText.trim().startsWith("<!DOCTYPE") ||
+      responseText.trim().startsWith("<html")
+    ) {
+      console.error(
+        "❌ Received HTML response instead of JSON - likely authentication issue"
+      );
+      console.error("This usually means:");
+      console.error("1. Cookies are expired/invalid");
+      console.error("2. Session has timed out");
+      console.error("3. Authorization failed");
+
+      return {
+        success: false,
+        status: response.status,
+        statusText: response.statusText,
+        sectionId: extractedSection.sectionId,
+        elementId: extractedSection.elementId,
+        error:
+          "Authentication failure - received HTML response instead of JSON",
+        response: responseText.substring(0, 1000), // Truncate for logging
+        responseHeaders: responseHeaders,
+        payload: payload,
+      };
+    }
+
     let parsedResponse = null;
     try {
       parsedResponse = JSON.parse(responseText);
     } catch (error) {
       console.error("Error parsing flex structure API response:", error);
+      return {
+        success: false,
+        status: response.status,
+        statusText: response.statusText,
+        sectionId: extractedSection.sectionId,
+        elementId: extractedSection.elementId,
+        error: `JSON parsing failed: ${error.message}`,
+        response: responseText,
+        responseHeaders: responseHeaders,
+        payload: payload,
+      };
     }
 
     const result = {
@@ -381,14 +428,11 @@ export async function updateFlexStructureAPI(
       payload: payload,
     };
 
-    console.log(`\n=== FLEX STRUCTURE API RESPONSE ===`);
-    console.log(`Success: ${result.success}`);
-    console.log(`Status: ${result.status} ${result.statusText}`);
-    console.log(`Section ID: ${result.sectionId}`);
-    console.log(`Response: ${responseText}`);
-
     if (parsedResponse) {
-      console.log(`Parsed Response:`, JSON.stringify(parsedResponse, null, 2));
+      console.log(
+        `✅ Parsed Response:`,
+        JSON.stringify(parsedResponse, null, 2)
+      );
     }
 
     return result;
@@ -401,6 +445,54 @@ export async function updateFlexStructureAPI(
       elementId: extractedSection.elementId,
     };
   }
+}
+
+// Helper function to validate and refresh cookies
+export function validateCookies(cookies) {
+  if (!cookies) {
+    console.warn("⚠️ No cookies provided");
+    return false;
+  }
+
+  // Check for essential cookies
+  const essentialCookies = [
+    "JSESSIONID",
+    "_dm_se_token_me",
+    "account_uuid",
+    "_dm_account",
+  ];
+
+  const hasEssentialCookies = essentialCookies.some((cookieName) =>
+    cookies.includes(cookieName)
+  );
+
+  if (!hasEssentialCookies) {
+    console.warn("⚠️ Missing essential authentication cookies");
+    return false;
+  }
+
+  console.log("✅ Cookies appear valid");
+  return true;
+}
+
+// Enhanced version with cookie validation
+export async function updateFlexStructureAPIWithValidation(
+  pageId,
+  extractedSection,
+  cookies,
+  uuid
+) {
+  // Validate cookies first
+  if (!validateCookies(cookies)) {
+    return {
+      success: false,
+      error: "Invalid or missing cookies",
+      sectionId: extractedSection.sectionId,
+      elementId: extractedSection.elementId,
+    };
+  }
+
+  return updateFlexStructureAPI(pageId, extractedSection, cookies, uuid);
 }
 
 // NEW: Function to process multiple extracted sections and call flex structure API

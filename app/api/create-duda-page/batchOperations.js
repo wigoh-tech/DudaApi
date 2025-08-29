@@ -1,68 +1,708 @@
 // Enhanced batchOperations.js with Zod validation and improved error handling - FIXED VERSION
 import { z } from "zod";
 import { DUDA_API_CONFIG } from "../../../lib/dudaApi";
-import { generateUniqueId, generateNumericId } from "./utils";
-import * as cheerio from "cheerio";
 
-// Zod schemas for validation - FIXED: More flexible validation
-const ElementDataSchema = z.object({
-  "data-layout-grid": z.string().optional(),
-}).passthrough().optional(); // Allow additional properties
+// Store for widget matching data
+let widgetMatchingData = {
+  matches: [],
+  matchedWidgetIds: [],
+  widgetHtmlMap: new Map(), // widgetId -> html content
+};
 
-const ElementSchema = z.object({
-  type: z.enum(["section", "grid", "group", "widget_wrapper"]),
-  id: z.string(),
-  parentId: z.union([z.string(), z.array(z.string())]).optional(),
-  children: z.array(z.string()).optional(),
-  name: z.string().optional(),
-  data: ElementDataSchema,
-  customClassName: z.string().optional(),
-  externalId: z.string().optional(),
-}).passthrough(); // Allow additional properties
+// Zod schemas for dynamic flex structure validation
+const ElementDataSchema = z
+  .object({
+    "data-layout-grid": z.string().optional(),
+    "data-widget-type": z.string().optional(),
+  })
+  .passthrough();
 
-const StyleRuleSchema = z.object({
-  "<id>": z.record(z.string(), z.any()), // More flexible for CSS values
-}).passthrough();
+  const ElementSchema = z
+  .object({
+    id: z.string(),
+    type: z.enum([
+      "section", 
+      "grid", 
+      "group", 
+      "widget_wrapper", 
+      "inner_grid"
+    ]),
+    parentId: z.union([
+      z.string(), 
+      z.array(z.string())
+    ]).optional(),
+    children: z.array(z.string()).optional(),
+    name: z.string().optional(),
+    data: ElementDataSchema.optional(),
+    customClassName: z.string().optional(),
+    externalId: z.string().optional(),
+  })
+  .passthrough();
 
-const StylesSchema = z.object({
-  breakpoints: z.object({
-    mobile: z.object({
-      idToRules: z.record(z.string(), StyleRuleSchema),
-    }).optional(),
-    common: z.object({
-      idToRules: z.record(z.string(), StyleRuleSchema),
-    }),
-    tablet: z.object({
-      idToRules: z.record(z.string(), StyleRuleSchema),
-    }).optional(),
-    desktop: z.object({
-      idToRules: z.record(z.string(), StyleRuleSchema),
-    }).optional(),
-  }).passthrough(),
-}).passthrough();
+// Enhanced StyleRule schema to handle nested style objects
+const StyleRuleSchema = z
+  .object({
+    "<id>": z.record(z.string(), z.any()), // Main style rules
+  })
+  .passthrough(); // Allow additional rule types
 
-const FlexStructureSchema = z.object({
-  id: z.string(),
-  section: ElementSchema,
-  rootContainerId: z.string(),
-  elements: z.record(z.string(), ElementSchema),
-  styles: StylesSchema,
-}).passthrough(); // Allow additional properties
+// Breakpoint schema with flexible rule structure
+const BreakpointSchema = z
+  .object({
+    idToRules: z.record(z.string(), StyleRuleSchema),
+  })
+  .passthrough();
 
-const SectionIdsSchema = z.object({
-  sectionId: z.string(),
-  gridId: z.string(),
-  parentGroupId: z.string(),
-  childGroup1Id: z.string(),  
-  childGroup2Id: z.string(),
-  elementId: z.string().optional(),
-});
+// Comprehensive Styles schema
+const StylesSchema = z
+  .object({
+    breakpoints: z
+      .object({
+        mobile: BreakpointSchema.optional(),
+        common: BreakpointSchema,
+        tablet: BreakpointSchema.optional(),
+        desktop: BreakpointSchema.optional(),
+      })
+      .passthrough(), // Allow additional breakpoints
+  })
+  .passthrough();
 
+// Main FlexStructure schema with enhanced validation
+const FlexStructureSchema = z
+  .object({
+    id: z.string(),
+    elements: z.record(z.string(), ElementSchema),
+    styles: StylesSchema,
+    rootContainerId: z.string(),
+    section: ElementSchema.optional(), // Some structures may have this
+  })
+  .passthrough(); // Allow additional top-level properties
+
+// Batch request schema (unchanged but included for completeness)
 const BatchRequestSchema = z.object({
   type: z.enum(["post", "put", "get", "delete"]),
   url: z.string(),
   data: z.record(z.string(), z.any()),
 });
+
+// Add this after the imports section
+async function insertElementApi(pageId, parent, markup) {
+  const url = `https://my.duda.co/api/uis/batch?op=create%20widget%20in%20flex&dm_device=desktop&currentEditorPageId=${pageId}`;
+
+  const batchReqId = Math.random().toString(36).substring(2, 8);
+
+  const payload = [
+    {
+      type: "post",
+      url: `/pages/${pageId}/insertElement?dm_batchReqId=${batchReqId}`,
+      data: {
+        markup: markup,
+        parent: parent,
+        before: null,
+        defaultLocation: false,
+      },
+    },
+  ];
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        accept: "*/*",
+        "accept-language": "en-US,en;q=0.9",
+        "content-type": "application/json",
+        dm_loc: "/home/site/41e002a2/duda",
+        dsid: "1048635",
+        origin: "https://my.duda.co",
+        priority: "u=1, i",
+        referer: "https://my.duda.co/home/site/41e002a2/duda",
+        "sec-ch-ua":
+          '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Linux"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "user-agent":
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+        "x-requested-with": "XMLHttpRequest",
+        cookie: DUDA_API_CONFIG.cookies,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseText = await response.text();
+    let parsedResponse = null;
+
+    try {
+      parsedResponse = JSON.parse(responseText);
+    } catch (parseError) {
+      console.warn(
+        "Failed to parse insert element response as JSON:",
+        parseError
+      );
+    }
+
+    return {
+      success: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      response: responseText,
+      parsedResponse: parsedResponse,
+      responseHeaders: Object.fromEntries(response.headers.entries()),
+    };
+  } catch (error) {
+    console.error("Insert element API error:", error);
+    return {
+      success: false,
+      error: error.message,
+      response: null,
+      parsedResponse: null,
+    };
+  }
+}
+
+// Add after the widgetMatchingData store
+let dynamicIdStore = {
+  divIds: [],
+  widgetIdToDivIdMap: new Map(),
+  counter: 0,
+};
+
+// UPDATED: Enhanced storeWidgetMatchingData function to handle both data structures
+export function storeWidgetMatchingData(enhancedMatching) {
+  console.log("\n===== STORING WIDGET MATCHING DATA =====");
+
+  if (!enhancedMatching) {
+    console.warn("No enhanced matching data provided");
+    return;
+  }
+
+  widgetMatchingData = {
+    matches: [],
+    matchedWidgetIds: [],
+    widgetHtmlMap: new Map(),
+  };
+
+  let matches = [];
+  let matchedWidgetIds = [];
+
+  // Handle the new data structure (from route.js response)
+  if (enhancedMatching.initial && enhancedMatching.initial.matches) {
+    console.log("Using 'initial' matches from enhanced matching data");
+    matches = enhancedMatching.initial.matches;
+    matchedWidgetIds = enhancedMatching.initial.matchedWidgetIds || [];
+  }
+  // Handle the updated data structure (from route.js response)
+  else if (enhancedMatching.updated && enhancedMatching.updated.matches) {
+    console.log("Using 'updated' matches from enhanced matching data");
+    matches = enhancedMatching.updated.matches;
+    matchedWidgetIds = enhancedMatching.updated.matchedWidgetIds || [];
+  }
+  // Handle direct matches array (original structure)
+  else if (
+    enhancedMatching.matches &&
+    Array.isArray(enhancedMatching.matches)
+  ) {
+    console.log("Using direct 'matches' array from enhanced matching data");
+    matches = enhancedMatching.matches;
+    matchedWidgetIds = enhancedMatching.matchedWidgetIds || [];
+  }
+  // Handle legacy structure with 'updated' property
+  else if (enhancedMatching.updated && enhancedMatching.updated.matches) {
+    console.log("Using legacy 'updated' structure");
+    matches = enhancedMatching.updated.matches;
+    matchedWidgetIds = enhancedMatching.updated.matchedWidgetIds || [];
+  } else {
+    console.warn("No valid matches found in enhanced matching data structure");
+    console.log("Available keys:", Object.keys(enhancedMatching));
+    return;
+  }
+
+  // Store the new data
+  widgetMatchingData.matches = matches || [];
+  widgetMatchingData.matchedWidgetIds = matchedWidgetIds || [];
+
+  // Create widget ID to HTML mapping
+  if (matches && Array.isArray(matches)) {
+    matches.forEach((match) => {
+      if (match.widgetId && match.element) {
+        widgetMatchingData.widgetHtmlMap.set(match.widgetId, {
+          html: match.element.html || "",
+          outerHtml: match.element.outerHtml || "",
+          text: match.element.text || "",
+          attributes: match.element.attributes || {},
+          matchType: match.matchType || "none",
+          matchScore: match.matchScore || 0,
+        });
+      }
+    });
+  }
+
+  console.log("Stored widget matching data:");
+  console.log(`- Total matches: ${widgetMatchingData.matches.length}`);
+  console.log(
+    `- Matched widget IDs: ${widgetMatchingData.matchedWidgetIds.length}`
+  );
+  console.log(
+    `- Widget HTML mappings: ${widgetMatchingData.widgetHtmlMap.size}`
+  );
+
+  // Log some example mappings for debugging
+  console.log("\n=== SAMPLE WIDGET HTML MAPPINGS ===");
+  let count = 0;
+  for (const [widgetId, htmlData] of widgetMatchingData.widgetHtmlMap) {
+    if (count < 3) {
+      // Show first 3 mappings
+      console.log(`Widget ID: ${widgetId}`);
+      console.log(`  - Match Type: ${htmlData.matchType}`);
+      console.log(`  - Match Score: ${htmlData.matchScore}`);
+      console.log(
+        `  - Text: ${
+          htmlData.text ? htmlData.text.substring(0, 50) + "..." : "None"
+        }`
+      );
+      console.log(
+        `  - HTML Length: ${
+          htmlData.html ? htmlData.html.length : 0
+        } characters`
+      );
+      count++;
+    } else {
+      break;
+    }
+  }
+}
+// UPDATED: Enhanced getHtmlForWidgetId function with better debugging
+export function getHtmlForWidgetId(widgetId) {
+  console.log(`\n=== GETTING HTML FOR WIDGET ID: ${widgetId} ===`);
+
+  if (!widgetMatchingData.widgetHtmlMap.has(widgetId)) {
+    console.warn(`No HTML found for widget ID: ${widgetId}`);
+    console.log(
+      `Available widget IDs in map: ${Array.from(
+        widgetMatchingData.widgetHtmlMap.keys()
+      )}`
+    );
+    return null;
+  }
+
+  const matchData = widgetMatchingData.widgetHtmlMap.get(widgetId);
+  console.log(`✅ Found HTML for widget ID: ${widgetId}`);
+  console.log(`  - Match Type: ${matchData.matchType}`);
+  console.log(`  - Match Score: ${matchData.matchScore}`);
+  console.log(
+    `  - HTML Length: ${matchData.html ? matchData.html.length : 0} characters`
+  );
+  console.log(
+    `  - Text Preview: ${
+      matchData.text ? matchData.text.substring(0, 100) + "..." : "None"
+    }`
+  );
+
+  return {
+    html: matchData.html,
+    outerHtml: matchData.outerHtml,
+    text: matchData.text,
+    attributes: matchData.attributes,
+    matchType: matchData.matchType,
+    matchScore: matchData.matchScore,
+  };
+}
+// NEW: Function to get all available widget IDs with HTML
+export function getAvailableWidgetIds() {
+  return Array.from(widgetMatchingData.widgetHtmlMap.keys());
+}
+// NEW: Function to get widget matching statistics
+export function getWidgetMatchingStats() {
+  return {
+    totalMatches: widgetMatchingData.matches.length,
+    totalMappings: widgetMatchingData.widgetHtmlMap.size,
+    matchedWidgetIds: widgetMatchingData.matchedWidgetIds.length,
+    widgetsWithHtml: Array.from(widgetMatchingData.widgetHtmlMap.keys()),
+    matchTypeBreakdown: widgetMatchingData.matches.reduce((acc, match) => {
+      const type = match.matchType || "unknown";
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {}),
+  };
+}
+
+// Function to extract widget IDs from flex structure sections
+function extractWidgetIdsFromFlexStructure(flexStructureSections) {
+  console.log("\n===== EXTRACTING WIDGET IDS FROM FLEX STRUCTURE =====");
+
+  if (!Array.isArray(flexStructureSections)) {
+    console.warn("Flex structure sections is not an array");
+    return [];
+  }
+
+  const allWidgetIds = [];
+
+  flexStructureSections.forEach((section, sectionIndex) => {
+    console.log(`\n--- Processing Section ${sectionIndex + 1} ---`);
+
+    try {
+      // Validate the section structure
+      const validatedSection = FlexStructureSchema.parse(section);
+      console.log(`✓ Section ${sectionIndex + 1} validation passed`);
+
+      const sectionWidgetIds = [];
+
+      if (validatedSection.elements) {
+        Object.entries(validatedSection.elements).forEach(
+          ([elementId, element]) => {
+            if (element.type === "widget_wrapper") {
+              sectionWidgetIds.push({
+                id: elementId,
+                name: element.name || "Unknown Widget",
+                widgetType: element.data?.["data-widget-type"] || "unknown",
+                externalId: element.externalId || null,
+                parentId: element.parentId || null,
+                sectionIndex: sectionIndex + 1,
+                sectionId: validatedSection.id,
+              });
+            }
+          }
+        );
+      }
+
+      console.log(
+        `Found ${sectionWidgetIds.length} widgets in section ${
+          sectionIndex + 1
+        }`
+      );
+      sectionWidgetIds.forEach((widget) => {
+        console.log(
+          `  - Widget ID: ${widget.id}, Type: ${widget.widgetType}, Parent: ${widget.parentId}`
+        );
+      });
+
+      allWidgetIds.push(...sectionWidgetIds);
+    } catch (error) {
+      console.error(
+        `✗ Section ${sectionIndex + 1} validation failed:`,
+        error.errors
+      );
+      console.warn(
+        `Continuing with potentially invalid section ${sectionIndex + 1}`
+      );
+
+      // Try to extract widgets without validation
+      if (section.elements) {
+        Object.entries(section.elements).forEach(([elementId, element]) => {
+          if (element && element.type === "widget_wrapper") {
+            allWidgetIds.push({
+              id: elementId,
+              name: element.name || "Unknown Widget",
+              widgetType: element.data?.["data-widget-type"] || "unknown",
+              externalId: element.externalId || null,
+              parentId: element.parentId || null,
+              sectionIndex: sectionIndex + 1,
+              sectionId: section.id || `section-${sectionIndex + 1}`,
+            });
+          }
+        });
+      }
+    }
+  });
+
+  console.log(`\nTotal widgets extracted: ${allWidgetIds.length}`);
+  return allWidgetIds;
+}
+
+// Function to get dynamic child groups from a section
+function getDynamicChildGroups(sectionElements, parentGroupId) {
+  const childGroups = [];
+
+  if (!sectionElements || !parentGroupId) {
+    return childGroups;
+  }
+
+  const parentGroup = sectionElements[parentGroupId];
+  if (!parentGroup || !parentGroup.children) {
+    return childGroups;
+  }
+
+  // Find all child groups
+  parentGroup.children.forEach((childId) => {
+    const childElement = sectionElements[childId];
+    if (childElement && childElement.type === "group") {
+      childGroups.push({
+        id: childId,
+        children: childElement.children || [],
+        widgets: (childElement.children || []).filter((childOfChild) => {
+          const element = sectionElements[childOfChild];
+          return element && element.type === "widget_wrapper";
+        }),
+      });
+    }
+  });
+
+  console.log(
+    `Found ${childGroups.length} dynamic child groups for parent ${parentGroupId}`
+  );
+  childGroups.forEach((group, index) => {
+    console.log(
+      `  - Child Group ${index + 1}: ${group.id} (${
+        group.widgets.length
+      } widgets)`
+    );
+  });
+
+  return childGroups;
+}
+
+// 1. ADD this function to map section template IDs to original IDs:
+// Enhanced mapSectionTemplateToOriginalIds function to handle nested child groups
+function mapSectionTemplateToOriginalIds(flexStructureSection, sectionDetails) {
+  console.log("\n=== MAPPING SECTION TEMPLATE TO ORIGINAL IDS (ENHANCED) ===");
+  console.log("Section Details:", sectionDetails);
+
+  const idMapping = new Map();
+
+  // Map basic section-level IDs
+  if (sectionDetails.elementId) {
+    idMapping.set("section.elementId", sectionDetails.elementId);
+  }
+  if (sectionDetails.sectionId) {
+    idMapping.set("section.sectionId", sectionDetails.sectionId);
+  }
+  if (sectionDetails.gridId) {
+    idMapping.set("section.gridId", sectionDetails.gridId);
+  }
+  if (sectionDetails.parentGroupId) {
+    idMapping.set("section.parentGroupId", sectionDetails.parentGroupId);
+  }
+
+  // Enhanced mapping for nested child groups
+  console.log("\n--- Processing Child Groups (Including Nested) ---");
+  
+  // First, handle direct child groups from sectionDetails.childGroups
+  if (sectionDetails.childGroups) {
+    Object.entries(sectionDetails.childGroups).forEach(([key, value]) => {
+      const templateKey = `section.${key}`;
+      idMapping.set(templateKey, value);
+      console.log(`✓ Mapped direct child group: ${templateKey} -> ${value}`);
+    });
+  }
+
+  // Handle legacy direct childGroup properties (fallback)
+  Object.keys(sectionDetails).forEach((key) => {
+    if (key.startsWith("childGroup") && key.endsWith("Id")) {
+      const templateKey = `section.${key}`;
+      if (!idMapping.has(templateKey)) {
+        idMapping.set(templateKey, sectionDetails[key]);
+        console.log(`✓ Mapped legacy child group: ${templateKey} -> ${sectionDetails[key]}`);
+      }
+    }
+  });
+
+  // NEW: Analyze the flex structure to identify nested relationships
+  console.log("\n--- Analyzing Flex Structure for Nested Groups ---");
+  
+  if (flexStructureSection.elements) {
+    // Find all template IDs that need mapping but don't have original IDs yet
+    const unmappedTemplateIds = [];
+    
+    Object.keys(flexStructureSection.elements).forEach(elementId => {
+      if (elementId.startsWith("section.") && !idMapping.has(elementId)) {
+        unmappedTemplateIds.push(elementId);
+      }
+    });
+
+    console.log(`Found ${unmappedTemplateIds.length} unmapped template IDs:`, unmappedTemplateIds);
+
+    // Try to map nested child groups by analyzing the structure
+    unmappedTemplateIds.forEach(templateId => {
+      const element = flexStructureSection.elements[templateId];
+      
+      if (element && element.type === "group") {
+        console.log(`\n--- Analyzing unmapped group: ${templateId} ---`);
+        console.log(`  Parent: ${element.parentId}`);
+        console.log(`  Children: ${element.children ? element.children.join(", ") : "none"}`);
+        
+        // Check if this is a nested child group by looking at its parent
+        if (element.parentId && element.parentId.startsWith("section.childGroup")) {
+          console.log(`  ✓ Detected as nested child group (parent: ${element.parentId})`);
+          
+          // Generate a mapping based on the pattern
+          // Extract the number from the template ID if it follows a pattern
+          const templateMatch = templateId.match(/section\.childGroup(\d+)Id/);
+          if (templateMatch) {
+            const groupNumber = templateMatch[1];
+            // You can customize this logic based on your actual ID generation pattern
+            const generatedId = `nested-group-${groupNumber}-${Date.now()}`;
+            idMapping.set(templateId, generatedId);
+            console.log(`  ✓ Generated mapping: ${templateId} -> ${generatedId}`);
+          }
+        }
+      }
+    });
+  }
+
+  // NEW: Validate that all section template IDs have mappings
+  console.log("\n--- Validation: Checking All Template IDs Have Mappings ---");
+  
+  if (flexStructureSection.elements) {
+    Object.keys(flexStructureSection.elements).forEach(elementId => {
+      if (elementId.startsWith("section.")) {
+        if (idMapping.has(elementId)) {
+          console.log(`✓ ${elementId} -> ${idMapping.get(elementId)}`);
+        } else {
+          console.warn(`⚠️  ${elementId} -> NO MAPPING FOUND`);
+          // Provide a fallback mapping to prevent errors
+          const fallbackId = elementId.replace("section.", "fallback-");
+          idMapping.set(elementId, fallbackId);
+          console.log(`  ↳ Created fallback: ${elementId} -> ${fallbackId}`);
+        }
+      }
+    });
+  }
+
+  console.log("\n--- Final ID Mapping Summary ---");
+  console.log("Total mappings created:", idMapping.size);
+  
+  // Group mappings by type for better visualization
+  const mappingsByType = {
+    basic: [],
+    childGroups: [],
+    fallbacks: []
+  };
+
+  idMapping.forEach((value, key) => {
+    if (key.includes("childGroup")) {
+      mappingsByType.childGroups.push(`${key} -> ${value}`);
+    } else if (value.startsWith("fallback-")) {
+      mappingsByType.fallbacks.push(`${key} -> ${value}`);
+    } else {
+      mappingsByType.basic.push(`${key} -> ${value}`);
+    }
+  });
+
+  console.log("Basic mappings:", mappingsByType.basic);
+  console.log("Child group mappings:", mappingsByType.childGroups);
+  if (mappingsByType.fallbacks.length > 0) {
+    console.warn("Fallback mappings (may need attention):", mappingsByType.fallbacks);
+  }
+
+  return idMapping;
+}
+
+
+// Enhanced function to extract dynamic child groups (recursive)
+function getDynamicChildGroupsRecursive(sectionElements, parentGroupId, level = 0) {
+  const indent = "  ".repeat(level);
+  console.log(`${indent}--- Processing child groups for: ${parentGroupId} (level ${level}) ---`);
+  
+  const childGroups = [];
+
+  if (!sectionElements || !parentGroupId) {
+    console.log(`${indent}No elements or parent group ID provided`);
+    return childGroups;
+  }
+
+  const parentGroup = sectionElements[parentGroupId];
+  if (!parentGroup || !parentGroup.children) {
+    console.log(`${indent}No parent group found or no children`);
+    return childGroups;
+  }
+
+  // Find all child groups
+  parentGroup.children.forEach((childId) => {
+    const childElement = sectionElements[childId];
+    if (childElement && childElement.type === "group") {
+      console.log(`${indent}Found child group: ${childId}`);
+      
+      const childGroupData = {
+        id: childId,
+        level: level + 1,
+        children: childElement.children || [],
+        widgets: (childElement.children || []).filter((childOfChild) => {
+          const element = sectionElements[childOfChild];
+          return element && element.type === "widget_wrapper";
+        }),
+        nestedGroups: [] // Will be populated recursively
+      };
+
+      // Recursively find nested child groups
+      const nestedGroups = getDynamicChildGroupsRecursive(sectionElements, childId, level + 1);
+      childGroupData.nestedGroups = nestedGroups;
+
+      console.log(`${indent}  - Widgets in ${childId}: ${childGroupData.widgets.length}`);
+      console.log(`${indent}  - Nested groups in ${childId}: ${nestedGroups.length}`);
+
+      childGroups.push(childGroupData);
+    }
+  });
+
+  console.log(`${indent}Total child groups at level ${level}: ${childGroups.length}`);
+  return childGroups;
+}
+
+// 2. ADD this function to apply the ID mapping to flex structure:
+function applyOriginalIdsToFlexStructure(flexStructureSection, idMapping) {
+  console.log("\n=== APPLYING ORIGINAL IDS TO FLEX STRUCTURE ===");
+
+  const updatedFlexStructure = JSON.parse(JSON.stringify(flexStructureSection));
+  const newElements = {};
+
+  // First pass: Create new elements with original IDs
+  Object.entries(updatedFlexStructure.elements).forEach(
+    ([templateId, element]) => {
+      const originalId = idMapping.get(templateId) || templateId;
+
+      // Update the element with original ID
+      const updatedElement = { ...element, id: originalId };
+
+      // Update parentId if it maps to an original ID
+      if (updatedElement.parentId && idMapping.has(updatedElement.parentId)) {
+        updatedElement.parentId = idMapping.get(updatedElement.parentId);
+      }
+
+      // Update children array with original IDs
+      if (updatedElement.children) {
+        updatedElement.children = updatedElement.children.map(
+          (childId) => idMapping.get(childId) || childId
+        );
+      }
+
+      newElements[originalId] = updatedElement;
+      console.log(`Mapped ${templateId} -> ${originalId}`);
+    }
+  );
+
+  // Update the root container ID
+  updatedFlexStructure.id =
+    idMapping.get(updatedFlexStructure.id) || updatedFlexStructure.id;
+  updatedFlexStructure.rootContainerId =
+    idMapping.get(updatedFlexStructure.rootContainerId) ||
+    updatedFlexStructure.rootContainerId;
+  updatedFlexStructure.elements = newElements;
+
+  // Update styles to use original IDs
+  if (updatedFlexStructure.styles && updatedFlexStructure.styles.breakpoints) {
+    Object.keys(updatedFlexStructure.styles.breakpoints).forEach(
+      (breakpoint) => {
+        const breakpointRules =
+          updatedFlexStructure.styles.breakpoints[breakpoint];
+        if (breakpointRules.idToRules) {
+          const newIdToRules = {};
+          Object.entries(breakpointRules.idToRules).forEach(
+            ([templateId, rules]) => {
+              const originalId = idMapping.get(templateId) || templateId;
+              newIdToRules[originalId] = rules;
+            }
+          );
+          breakpointRules.idToRules = newIdToRules;
+        }
+      }
+    );
+  }
+
+  console.log("Applied original IDs to flex structure");
+  return updatedFlexStructure;
+}
 
 export async function executeBatchOperations(
   pageId,
@@ -71,7 +711,8 @@ export async function executeBatchOperations(
   extractedIds,
   htmlIds,
   flexWidgetIds,
-  batchRequestBody
+  primaryBatchBody,
+  enhancedWidgetMatching = null
 ) {
   console.log("\n===== STARTING ENHANCED BATCH OPERATIONS =====");
   console.log("Initial Parameters:");
@@ -81,76 +722,120 @@ export async function executeBatchOperations(
   console.log("- Extracted IDs Count:", extractedIds.length);
   console.log("- HTML IDs Count:", htmlIds.length);
   console.log("- Flex Widget IDs Count:", flexWidgetIds.length);
-  console.log("- Batch Request Body Type:", typeof batchRequestBody);
+  console.log("- Primary Batch Body Type:", typeof primaryBatchBody);
+  console.log("- Enhanced Widget Matching provided:", !!enhancedWidgetMatching);
 
-  // Validate input parameters with more lenient validation
-  try {
-    z.array(BatchRequestSchema).parse(batchRequestBody);
-    console.log("✓ Batch request body validation passed");
-  } catch (error) {
-    console.error("✗ Batch request body validation failed:", error.errors);
-    // Don't throw here, just log and continue with a warning
-    console.warn("Continuing with potentially invalid batch request body");
+  // Store widget matching data if provided
+  if (enhancedWidgetMatching) {
+    console.log("Storing enhanced widget matching data...");
+    storeWidgetMatchingData(enhancedWidgetMatching);
+
+    // Log widget matching statistics
+    const stats = getWidgetMatchingStats();
+    console.log("Widget Matching Statistics:", stats);
+  } else {
+    console.warn("No enhanced widget matching data provided");
   }
 
-  // Validate batchRequestBody
+  // Validate primaryBatchBody as flex structure sections
   if (
-    !batchRequestBody ||
-    !Array.isArray(batchRequestBody) ||
-    batchRequestBody.length === 0
+    !primaryBatchBody ||
+    !Array.isArray(primaryBatchBody) ||
+    primaryBatchBody.length === 0
   ) {
     throw new Error(
-      "Batch request body is required and must be a non-empty array"
+      "Primary batch body is required and must be a non-empty array of flex structure sections"
     );
   }
 
-  // Analyze the batch request body to understand the structure
-  const batchAnalysis = analyzeBatchRequestBody(batchRequestBody);
-  console.log("\n===== BATCH REQUEST ANALYSIS =====");
-  console.log("Analysis:", JSON.stringify(batchAnalysis, null, 2));
+  // Extract widget IDs from flex structure sections
+  const extractedWidgetIds =
+    extractWidgetIdsFromFlexStructure(primaryBatchBody);
+  console.log(
+    `Total widgets extracted from all sections: ${extractedWidgetIds.length}`
+  );
+
+  // Print widget matching data for extracted widgets
+  printExtractedWidgetMatchingData(extractedWidgetIds);
 
   const batchResults = [];
 
-  for (let i = 0; i < extractedIds.length; i++) {
+  // Process each section
+  for (
+    let i = 0;
+    i < Math.min(extractedIds.length, primaryBatchBody.length);
+    i++
+  ) {
     const section = extractedIds[i];
     const htmlId = htmlIds[i];
     const flexWidgetId = flexWidgetIds[i];
+    const flexStructureSection = primaryBatchBody[i];
 
     console.log(`\n===== PROCESSING SECTION ${i + 1} =====`);
     console.log("Section Details:", section);
     console.log("HTML ID:", htmlId);
     console.log("Flex Widget ID:", flexWidgetId);
 
-    // More lenient section validation
     try {
-      SectionIdsSchema.parse(section);
-      console.log("✓ Section IDs validation passed");
-    } catch (error) {
-      console.error("✗ Section IDs validation failed:", error.errors);
-      // Continue with a warning instead of failing
-      console.warn("Continuing with potentially invalid section IDs");
-    }
+      // Validate the flex structure section
+      const validatedSection = FlexStructureSchema.parse(flexStructureSection);
+      console.log(`✓ Flex structure section ${i + 1} validation passed`);
 
-    if (!validateSectionIds(section, flexWidgetId)) {
-      batchResults.push({
-        sectionIndex: i + 1,
-        sectionId: section.sectionId,
-        success: false,
-        error: "Missing required IDs",
-        htmlIdUsed: htmlId,
+      // Get dynamic child groups for this section
+      const childGroups = getDynamicChildGroups(
+        validatedSection.elements,
+        section.parentGroupId
+      );
+
+      // Extract widgets from this specific section
+      const sectionWidgets = extractedWidgetIds.filter(
+        (w) => w.sectionIndex === i + 1
+      );
+
+      console.log(
+        `Section ${i + 1} contains ${sectionWidgets.length} widgets:`
+      );
+
+      // Debug: Log first few widgets in this section
+      sectionWidgets.slice(0, 3).forEach((widget, idx) => {
+        console.log(`  Widget ${idx + 1}: ${widget.id} (${widget.widgetType})`);
+        const hasMatch = widgetMatchingData.widgetHtmlMap.has(widget.id);
+        console.log(`    - Has HTML match: ${hasMatch}`);
+        if (hasMatch) {
+          const match = widgetMatchingData.widgetHtmlMap.get(widget.id);
+          console.log(
+            `    - Match type: ${match.matchType}, score: ${match.matchScore}`
+          );
+        }
       });
-      continue;
-    }
+      if (sectionWidgets.length > 3) {
+        console.log(`  ...and ${sectionWidgets.length - 3} more widgets`);
+      }
 
-    try {
-      const result = await executeDynamicBatchRequest(
+      if (sectionWidgets.length === 0) {
+        console.warn(`⚠️ No widgets found in section ${i + 1} - skipping`);
+        batchResults.push({
+          sectionIndex: i + 1,
+          sectionId: section.sectionId,
+          success: true, // Mark as success since no widgets to process isn't an error
+          htmlIdUsed: htmlId,
+          processedWidgets: 0,
+          widgetsWithHtml: 0,
+          childGroups: childGroups.length,
+          note: "No widgets found in this section",
+        });
+        continue; // Skip to next section
+      }
+
+      const result = await executeSectionBatchOperations(
         pageId,
         uuid,
         alias,
         section,
         flexWidgetId,
-        batchRequestBody,
-        batchAnalysis
+        validatedSection,
+        childGroups,
+        sectionWidgets
       );
 
       batchResults.push({
@@ -158,14 +843,18 @@ export async function executeBatchOperations(
         sectionId: section.sectionId,
         success: result.success,
         htmlIdUsed: htmlId,
+        processedWidgets: sectionWidgets.length,
+        widgetsWithHtml: sectionWidgets.filter((w) =>
+          widgetMatchingData.widgetHtmlMap.has(w.id)
+        ).length,
+        childGroups: childGroups.length,
         insertedElements: result.insertedElements || [],
         batchResponses: result.batchResponses || [],
-        flexStructureUpdateResponse: result.flexStructureUpdateResponse,
         error: result.error,
       });
 
       // Add delay between sections
-      if (i < extractedIds.length - 1) {
+      if (i < Math.min(extractedIds.length, primaryBatchBody.length) - 1) {
         console.log("\n--- Adding delay before next section ---");
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
@@ -177,6 +866,9 @@ export async function executeBatchOperations(
         success: false,
         error: error.message,
         htmlIdUsed: htmlId,
+        processedWidgets: 0,
+        widgetsWithHtml: 0,
+        childGroups: 0,
       });
     }
   }
@@ -192,707 +884,766 @@ export async function executeBatchOperations(
     "- Failed Operations:",
     batchResults.filter((r) => !r.success).length
   );
+  console.log(
+    "- Total Widgets Processed:",
+    batchResults.reduce((sum, r) => sum + (r.processedWidgets || 0), 0)
+  );
+  console.log(
+    "- Total Widgets with HTML:",
+    batchResults.reduce((sum, r) => sum + (r.widgetsWithHtml || 0), 0)
+  );
 
   return batchResults;
 }
 
-function analyzeBatchRequestBody(batchRequestBody) {
-  const insertElementRequests = batchRequestBody.filter(
-    (req) => req.url && req.url.includes("insertElement")
-  );
+// Function to print widget matching data for extracted widgets
+function printExtractedWidgetMatchingData(extractedWidgetIds) {
+  console.log("\n===== EXTRACTED WIDGET MATCHING DATA =====");
 
-  const flexStructureRequests = batchRequestBody.filter(
-    (req) => req.url && req.url.includes("flexStructure")
-  );
+  extractedWidgetIds.forEach((widget, index) => {
+    console.log(`\n--- Extracted Widget ${index + 1} ---`);
+    console.log(`Widget ID: ${widget.id}`);
+    console.log(`Widget Type: ${widget.widgetType}`);
+    console.log(`Section: ${widget.sectionIndex} (${widget.sectionId})`);
+    console.log(`Parent ID: ${widget.parentId}`);
 
-  const analysis = {
-    totalRequests: batchRequestBody.length,
-    insertElementCount: insertElementRequests.length,
-    flexStructureCount: flexStructureRequests.length,
-    insertElements: insertElementRequests.map((req, index) => ({
-      index,
-      markup: req.data?.markup || "",
-      widgetType: extractWidgetTypeFromMarkup(req.data?.markup || ""),
-      hasId: req.data?.markup?.includes("id=") || false,
-    })),
-    flexStructure:
-      flexStructureRequests.length > 0
-        ? analyzeFlexStructure(flexStructureRequests[0].data)
-        : null,
-  };
-
-  return analysis;
+    // Check if we have matching data for this widget
+    const matchingData = widgetMatchingData.widgetHtmlMap.get(widget.id);
+    if (matchingData) {
+      console.log(`✓ HTML Match Found:`);
+      console.log(`  - Match Type: ${matchingData.matchType}`);
+      console.log(`  - Match Score: ${matchingData.matchScore}`);
+      console.log(
+        `  - Text: ${
+          matchingData.text
+            ? matchingData.text.substring(0, 100) + "..."
+            : "None"
+        }`
+      );
+      console.log(
+        `  - HTML Length: ${
+          matchingData.html ? matchingData.html.length : 0
+        } characters`
+      );
+    } else {
+      console.log(`✗ No HTML Match Found`);
+    }
+  });
 }
 
-function extractWidgetTypeFromMarkup(markup) {
-  if (markup.includes('data-element-type="paragraph"')) return "paragraph";
-  if (markup.includes('data-element-type="image"')) return "image";
-  if (markup.includes('data-element-type="button"')) return "button";
-  return "unknown";
-}
-
-function analyzeFlexStructure(flexData) {
-  if (!flexData || !flexData.elements) return null;
-
-  const widgets = Object.keys(flexData.elements).filter(
-    (key) => flexData.elements[key].type === "widget_wrapper"
-  );
-
-  const groups = Object.keys(flexData.elements).filter(
-    (key) => flexData.elements[key].type === "group"
-  );
-
-  return {
-    widgetCount: widgets.length,
-    groupCount: groups.length,
-    widgetIds: widgets,
-    groupIds: groups,
-  };
-}
-
-function validateSectionIds(section, flexWidgetId) {
-  const requiredIds = [
-    "childGroup1Id",
-    "sectionId",
-    "gridId",
-    "parentGroupId",
-    "childGroup2Id",
-  ];
-
-  return requiredIds.every((id) => section[id]) && flexWidgetId;
-}
-
-async function executeDynamicBatchRequest(
+// Updated executeSectionBatchOperations function
+async function executeSectionBatchOperations(
   pageId,
   uuid,
   alias,
   section,
   flexWidgetId,
-  batchRequestBody,
-  batchAnalysis
+  flexStructureSection,
+  childGroups,
+  sectionWidgets
 ) {
-  console.log("\n===== EXECUTING DYNAMIC BATCH REQUEST =====");
+  console.log(`\n===== EXECUTING SECTION BATCH OPERATIONS =====`);
+  console.log(`Section ID: ${section.sectionId}`);
+  console.log(`Flex Widget ID: ${flexWidgetId}`);
+  console.log(`Child Groups: ${childGroups.length}`);
+  console.log(`Section Widgets: ${sectionWidgets.length}`);
 
   try {
-    // Generate dynamic IDs for all widgets we need to insert
-    const dynamicIds = generateDynamicIdsForBatch(batchAnalysis);
-    console.log("Generated Dynamic IDs:", dynamicIds);
-
-    // Step 1: Insert all elements
-    const insertResults = await insertMultipleElements(
-      pageId,
-      alias,
-      section,
-      flexWidgetId,
-      batchRequestBody,
-      dynamicIds
+    // **NEW: Map template IDs to original IDs**
+    const idMapping = mapSectionTemplateToOriginalIds(
+      flexStructureSection,
+      section
+    );
+    const flexStructureWithOriginalIds = applyOriginalIdsToFlexStructure(
+      flexStructureSection,
+      idMapping
     );
 
-    if (!insertResults.success) {
-      return {
-        success: false,
-        error: insertResults.error,
-        insertedElements: [],
-        batchResponses: [],
-      };
+    console.log("Using flex structure with original IDs");
+
+    const processedWidgets = [];
+    const batchResponses = [];
+    const insertElementResponses = [];
+
+    for (const widget of sectionWidgets) {
+      console.log(`\n--- Processing Widget: ${widget.id} ---`);
+
+      // Get HTML for this widget dynamically
+      const widgetHtml = getHtmlForWidgetId(widget.id);
+
+      if (widgetHtml && widgetHtml.html) {
+        console.log(
+          `  ✅ Found matching HTML (${widgetHtml.matchType}, score: ${widgetHtml.matchScore})`
+        );
+        console.log(
+          `  📝 Text: ${
+            widgetHtml.text ? widgetHtml.text.substring(0, 100) + "..." : "None"
+          }`
+        );
+        console.log(`  🔗 HTML length: ${widgetHtml.html.length} chars`);
+        console.log(
+          `  🏷️  Attributes: ${Object.keys(widgetHtml.attributes || {}).join(
+            ", "
+          )}`
+        );
+
+        // **UPDATED: Make actual insert element API call**
+        console.log(`  🚀 Making insert element API call...`);
+        console.log(`  📍 Parent ID (flexWidgetId): ${flexWidgetId}`);
+        console.log(`  📄 Markup: ${widgetHtml.html.substring(0, 200)}...`);
+
+        const insertResult = await insertElementApi(
+          pageId,
+          flexWidgetId,
+          widgetHtml.html
+        );
+
+        console.log(`  📥 Insert Element API Response:`);
+        console.log(`    - Success: ${insertResult.success}`);
+        console.log(
+          `    - Status: ${insertResult.status} ${
+            insertResult.statusText || ""
+          }`
+        );
+        console.log(
+          `    - Response: ${
+            insertResult.response
+              ? insertResult.response.substring(0, 200) + "..."
+              : "None"
+          }`
+        );
+
+        if (insertResult.parsedResponse) {
+          console.log(
+            `    - Parsed Response:`,
+            JSON.stringify(insertResult.parsedResponse, null, 2)
+          );
+        }
+
+        // **NEW: Extract and store dynamic ID**
+        let divId = null;
+        if (insertResult.success && insertResult.parsedResponse) {
+          divId = extractAndStoreDynamicId(widget.id, insertResult);
+        }
+
+        insertElementResponses.push({
+          widgetId: widget.id,
+          flexWidgetId: flexWidgetId,
+          insertResult: insertResult,
+          htmlUsed: widgetHtml.html,
+          matchType: widgetHtml.matchType,
+          matchScore: widgetHtml.matchScore,
+          extractedDivId: divId, // This will now be the actual extracted ID, not divId format
+        });
+
+        // Create API response object for compatibility
+        const apiResponse = {
+          success: insertResult.success,
+          widgetId: widget.id,
+          flexWidgetId: flexWidgetId,
+          htmlUsed: widgetHtml.html.substring(0, 100) + "...",
+          fullHtmlLength: widgetHtml.html.length,
+          matchType: widgetHtml.matchType,
+          matchScore: widgetHtml.matchScore,
+          textContent: widgetHtml.text,
+          attributes: widgetHtml.attributes,
+          extractedDivId: divId, // This will now be the actual extracted ID
+          insertElementResponse: {
+            status: insertResult.status,
+            success: insertResult.success,
+            response: insertResult.response,
+            parsedResponse: insertResult.parsedResponse,
+          },
+        };
+
+        batchResponses.push(apiResponse);
+
+        processedWidgets.push({
+          widgetId: widget.id,
+          widgetType: widget.widgetType,
+          flexWidgetId: flexWidgetId,
+          htmlData: widgetHtml.html,
+          textData: widgetHtml.text,
+          attributes: widgetHtml.attributes,
+          matchType: widgetHtml.matchType,
+          matchScore: widgetHtml.matchScore,
+          processed: true,
+          hasContent: true,
+          insertElementSuccess: insertResult.success,
+          insertElementStatus: insertResult.status,
+          extractedDivId: divId, // **NEW: Include extracted div ID**
+        });
+
+        if (insertResult.success) {
+          console.log(
+            `  ✅ Widget ${widget.id} insert element API call successful`
+          );
+          if (divId) {
+            console.log(`  🆔 Extracted and stored div ID: ${divId}`);
+          }
+        } else {
+          console.log(
+            `  ❌ Widget ${widget.id} insert element API call failed: ${
+              insertResult.error || "Unknown error"
+            }`
+          );
+        }
+
+        // Add delay between insert element calls
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      } else {
+        console.log(`  ❌ No HTML match found for widget ${widget.id}`);
+        console.log(
+          `  🔍 Available widget IDs: ${getAvailableWidgetIds()
+            .slice(0, 5)
+            .join(", ")}${getAvailableWidgetIds().length > 5 ? "..." : ""}`
+        );
+
+        processedWidgets.push({
+          widgetId: widget.id,
+          widgetType: widget.widgetType,
+          flexWidgetId: flexWidgetId,
+          htmlData: null,
+          textData: null,
+          attributes: {},
+          matchType: "none",
+          matchScore: 0,
+          processed: false,
+          hasContent: false,
+          insertElementSuccess: false,
+          insertElementStatus: null,
+          extractedDivId: null, // **NEW: No div ID for unmatched widgets**
+        });
+      }
     }
 
-    // Step 2: Update flex structure with all inserted elements
-    const flexUpdateResult = await updateFlexStructureWithMultipleElements(
-      pageId,
-      uuid,
-      alias,
-      section,
-      flexWidgetId,
-      batchRequestBody,
-      dynamicIds,
-      insertResults.insertedElements
+    // **UPDATED: Update flex structure with original IDs**
+    const updatedExternalIds = new Map();
+    insertElementResponses.forEach((response) => {
+      if (response.extractedDivId) {
+        updatedExternalIds.set(response.widgetId, response.extractedDivId);
+      }
+    });
+
+    let flexStructureUpdateResult = null;
+    if (updatedExternalIds.size > 0) {
+      console.log(
+        `\n🔄 Updating flex structure with ${updatedExternalIds.size} new external IDs...`
+      );
+      // Use the flex structure with original IDs
+      flexStructureUpdateResult = await updateFlexStructureApi(
+        pageId,
+        uuid,
+        flexStructureWithOriginalIds,
+        updatedExternalIds
+      );
+
+      console.log(`Flex structure update result:`, {
+        success: flexStructureUpdateResult.success,
+        status: flexStructureUpdateResult.status,
+      });
+    }
+
+    console.log("\n=== UPDATED FLEX STRUCTURE BODY WITH ORIGINAL IDS ===");
+    const finalUpdatedFlexStructure = JSON.parse(
+      JSON.stringify(flexStructureWithOriginalIds)
     );
+    Object.entries(finalUpdatedFlexStructure.elements).forEach(
+      ([elementId, element]) => {
+        if (
+          element.type === "widget_wrapper" &&
+          updatedExternalIds.has(elementId)
+        ) {
+          element.externalId = updatedExternalIds.get(elementId);
+        }
+      }
+    );
+    console.log(JSON.stringify(finalUpdatedFlexStructure, null, 2));
+
+    // **NEW: Count successful/failed inserts properly**
+    const successfulInserts = insertElementResponses.filter(
+      (r) => r.insertResult.success
+    ).length;
+    const failedInserts = insertElementResponses.filter(
+      (r) => !r.insertResult.success
+    ).length;
+
+    console.log(`\n✅ Section processing completed:`);
+    console.log(`  - Total widgets: ${sectionWidgets.length}`);
+    console.log(
+      `  - Widgets with HTML: ${
+        processedWidgets.filter((w) => w.hasContent).length
+      }`
+    );
+    console.log(
+      `  - Successfully processed: ${
+        processedWidgets.filter((w) => w.processed).length
+      }`
+    );
+    console.log(`  - Insert element calls successful: ${successfulInserts}`);
+    console.log(`  - Insert element calls failed: ${failedInserts}`);
 
     return {
-      success: true,
-      insertedElements: insertResults.insertedElements,
-      batchResponses: insertResults.batchResponses,
-      flexStructureUpdateResponse: flexUpdateResult.response,
+      success: successfulInserts > 0,
+      insertedElements: processedWidgets.filter((w) => w.processed),
+      batchResponses: batchResponses,
+      insertElementResponses: insertElementResponses,
+      processedWidgets: processedWidgets.length,
+      widgetsWithHtml: processedWidgets.filter((w) => w.hasContent).length,
+      successfulInserts: successfulInserts,
+      failedInserts: failedInserts,
+      childGroups: childGroups.length,
+      flexStructureUpdateResult: flexStructureUpdateResult,
+      extractedDivIds: Array.from(updatedExternalIds.values()),
+      updatedFlexStructure: finalUpdatedFlexStructure, // Now properly defined
+      originalIdMapping: Object.fromEntries(idMapping),
       error: null,
     };
   } catch (error) {
-    console.error("Dynamic batch request failed:", error);
+    console.error("Section batch operations failed:", error);
     return {
       success: false,
       error: error.message,
       insertedElements: [],
       batchResponses: [],
+      insertElementResponses: [],
+      processedWidgets: 0,
+      widgetsWithHtml: 0,
+      successfulInserts: 0,
+      failedInserts: 0,
+      childGroups: 0,
+      flexStructureUpdateResult: null,
+      extractedDivIds: [],
+      updatedFlexStructure: null,
     };
   }
 }
 
-function generateDynamicIdsForBatch(batchAnalysis) {
-  const dynamicIds = {
-    widgets: [],
-    divs: [],
-    widgetIdMap: new Map(),
-    divIdMap: new Map(),
-  };
+// Function to extract and store dynamic IDs from insert element response
+function extractAndStoreDynamicId(widgetId, insertElementResponse) {
+  console.log(`\n=== EXTRACTING DYNAMIC ID FOR WIDGET: ${widgetId} ===`);
 
-  // Generate IDs for each insert element request
-  for (let i = 0; i < batchAnalysis.insertElementCount; i++) {
-    const widgetId = `widget_${generateUniqueId().substring(0, 8)}`;
-    const divId = generateNumericId();
-
-    dynamicIds.widgets.push(widgetId);
-    dynamicIds.divs.push(divId);
-    dynamicIds.widgetIdMap.set(`widgetId${i + 1}`, widgetId);
-    dynamicIds.divIdMap.set(`divId${i + 1}`, divId);
+  if (!insertElementResponse.parsedResponse) {
+    console.warn("No parsed response available for ID extraction");
+    return null;
   }
 
-  return dynamicIds;
+  try {
+    // Get the first (and typically only) response entry
+    const responseEntries = Object.values(insertElementResponse.parsedResponse);
+    if (responseEntries.length === 0) {
+      console.warn("No response entries found");
+      return null;
+    }
+
+    const element = responseEntries[0].element;
+    if (!element) {
+      console.warn("No element found in response");
+      return null;
+    }
+
+    // UPDATED: Extract the first dynamic ID found in the element HTML
+    // Look for id="numbers" pattern and extract the numeric ID
+    const idMatches = element.match(/id="(\d+)"/g);
+    if (!idMatches || idMatches.length === 0) {
+      console.warn("No dynamic numeric ID found in element HTML");
+      console.log("Element HTML snippet:", element.substring(0, 200));
+      return null;
+    }
+
+    // Get the first numeric ID (usually the main element ID)
+    const firstIdMatch = idMatches[0].match(/id="(\d+)"/);
+    if (!firstIdMatch || !firstIdMatch[1]) {
+      console.warn("Failed to extract numeric ID from match");
+      return null;
+    }
+
+    const extractedId = firstIdMatch[1];
+
+    console.log(`✅ Extracted dynamic ID:`);
+    console.log(`  - Extracted ID: ${extractedId}`);
+    console.log(`  - Widget ID: ${widgetId}`);
+    console.log(`  - Total ID matches found: ${idMatches.length}`);
+
+    // Log all found IDs for debugging
+    idMatches.forEach((match, index) => {
+      const idValue = match.match(/id="(\d+)"/)[1];
+      console.log(`  - ID ${index + 1}: ${idValue}`);
+    });
+
+    // Store the numeric extracted ID
+    dynamicIdStore.divIds.push({
+      widgetId: widgetId,
+      originalId: extractedId,
+      extractedFromResponse: true,
+      allIdsFound: idMatches.map((match) => match.match(/id="(\d+)"/)[1]),
+    });
+
+    // Store the mapping correctly
+    dynamicIdStore.widgetIdToDivIdMap.set(widgetId, extractedId);
+    dynamicIdStore.counter++;
+
+    return extractedId; // Return the actual numeric extracted ID
+  } catch (error) {
+    console.error("Error extracting dynamic ID:", error);
+    return null;
+  }
 }
 
-async function insertMultipleElements(
+// 4. UPDATE the updateFlexStructureApi function URL:
+async function updateFlexStructureApi(
   pageId,
-  alias,
-  section,
-  flexWidgetId,
-  batchRequestBody,
-  dynamicIds
+  uuid,
+  flexStructureSection,
+  updatedExternalIds
 ) {
-  console.log("\n===== INSERTING MULTIPLE ELEMENTS =====");
+  console.log("\n=== UPDATING FLEX STRUCTURE ===");
+  console.log("Page ID:", pageId);
+  console.log("UUID:", uuid);
+  console.log("Flex structure section ID:", flexStructureSection.id);
+  console.log("Root container ID:", flexStructureSection.rootContainerId);
 
-  const insertElementRequests = batchRequestBody.filter(
-    (req) => req.url && req.url.includes("insertElement")
+  // Validate that we have actual IDs, not template IDs
+  if (flexStructureSection.id.startsWith("section.")) {
+    console.error("❌ ERROR: Still using template ID instead of original ID");
+    console.error("Template ID found:", flexStructureSection.id);
+    console.error(
+      "This will cause a 400 error - aborting flex structure update"
+    );
+    return {
+      success: false,
+      error: "Template ID detected instead of original ID",
+      status: 400,
+    };
+  }
+
+  const batchReqId = Math.random().toString(36).substring(2, 8);
+  const url = `https://my.duda.co/api/uis/batch?op=update%20flex%20structure&dm_device=desktop&currentEditorPageId=${pageId}`;
+
+  // Clone the flex structure section
+  const updatedFlexStructure = JSON.parse(JSON.stringify(flexStructureSection));
+
+  // Update external IDs in the elements
+  Object.entries(updatedFlexStructure.elements).forEach(
+    ([elementId, element]) => {
+      if (
+        element.type === "widget_wrapper" &&
+        updatedExternalIds.has(elementId)
+      ) {
+        const newExternalId = updatedExternalIds.get(elementId);
+        console.log(
+          `Updating widget ${elementId} externalId to: ${newExternalId}`
+        );
+        element.externalId = newExternalId;
+      }
+    }
   );
 
-  const insertedElements = [];
-  const batchResponses = [];
+  const payload = [
+    {
+      type: "put",
+      url: `/pages/${uuid}/flexStructure?dm_batchReqId=${batchReqId}`,
+      data: updatedFlexStructure,
+    },
+  ];
 
-  for (let i = 0; i < insertElementRequests.length; i++) {
-    const request = insertElementRequests[i];
-    const widgetId = dynamicIds.widgets[i];
-    const divId = dynamicIds.divs[i];
+  console.log("=== FLEX STRUCTURE UPDATE VALIDATION ===");
+  console.log("Page ID:", pageId);
+  console.log("UUID:", uuid);
+  console.log("Section ID for API:", updatedFlexStructure.id);
+  console.log("API URL:", payload[0].url);
+  console.log("Updated external IDs:", Object.fromEntries(updatedExternalIds));
 
-    console.log(`\n--- Inserting Element ${i + 1} ---`);
-    console.log("Widget ID:", widgetId);
-    console.log("Div ID:", divId);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        accept: "*/*",
+        "accept-language": "en-US,en;q=0.9",
+        "content-type": "application/json",
+        dm_loc: "/home/site/41e002a2/duda",
+        dsid: "1048635",
+        origin: "https://my.duda.co",
+        priority: "u=1, i",
+        referer: "https://my.duda.co/home/site/41e002a2/duda",
+        "sec-ch-ua":
+          '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Linux"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        "user-agent":
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+        "x-requested-with": "XMLHttpRequest",
+        cookie: DUDA_API_CONFIG.cookies,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseText = await response.text();
+    let parsedResponse = null;
 
     try {
-      // Prepare the insert request
-      const insertRequest = prepareInsertElementRequest(
-        request,
-        pageId,
-        flexWidgetId,
-        widgetId,
-        divId
+      parsedResponse = JSON.parse(responseText);
+    } catch (parseError) {
+      console.warn(
+        "Failed to parse flex structure response as JSON:",
+        parseError
       );
-
-      console.log("Insert Request:", JSON.stringify(insertRequest, null, 2));
-
-      // Execute the insert request
-      const response = await fetch(
-        `${DUDA_API_CONFIG.baseUrl}/uis/batch?op=create%20widget%20in%20flex&dm_device=desktop&currentEditorPageId=${pageId}`,
-        {
-          method: "POST",
-          headers: getBatchHeaders(alias),
-          body: JSON.stringify([insertRequest]),
-        }
-      );
-
-      const responseText = await response.text();
-      console.log(`Insert Response ${i + 1}:`, responseText);
-
-      if (!response.ok) {
-        console.error(`Insert failed for element ${i + 1}: ${response.status} ${responseText}`);
-        // Continue with other elements even if one fails
-        continue;
-      }
-
-      const jsonResponse = JSON.parse(responseText);
-      batchResponses.push(jsonResponse);
-
-      // Extract the inserted element ID
-      const insertedElementId =
-        extractInsertedElementIdFromResponse(jsonResponse);
-
-      if (insertedElementId) {
-        insertedElements.push({
-          widgetId,
-          divId,
-          insertedElementId,
-          index: i,
-        });
-        console.log(
-          `Successfully inserted element ${i + 1}: ${insertedElementId}`
-        );
-      } else {
-        console.error(`Failed to extract element ID for insert ${i + 1}`);
-      }
-
-      // Small delay between inserts
-      if (i < insertElementRequests.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-    } catch (error) {
-      console.error(`Error inserting element ${i + 1}:`, error);
-      // Continue with other elements even if one fails
     }
+
+    console.log(
+      `Flex structure update response: ${response.status} ${response.statusText}`
+    );
+    if (!response.ok) {
+      console.error("❌ Flex structure update failed:", responseText);
+      console.error("Request payload was:", JSON.stringify(payload, null, 2));
+    } else {
+      console.log("✅ Flex structure update successful");
+    }
+
+    return {
+      success: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      response: responseText,
+      parsedResponse: parsedResponse,
+      responseHeaders: Object.fromEntries(response.headers.entries()),
+    };
+  } catch (error) {
+    console.error("Flex structure update API error:", error);
+    return {
+      success: false,
+      error: error.message,
+      response: null,
+      parsedResponse: null,
+    };
   }
+}
+
+// **NEW: Utility functions for dynamic ID management**
+export function getDynamicIdMappings() {
+  console.log("\n=== DYNAMIC ID MAPPINGS DEBUG ===");
+  const mappings = Object.fromEntries(dynamicIdStore.widgetIdToDivIdMap);
+  console.log("Widget ID to Extracted ID mappings:", mappings);
+
+  dynamicIdStore.divIds.forEach((mapping, index) => {
+    console.log(
+      `${index + 1}. ${mapping.widgetId} -> ${
+        dynamicIdStore.widgetIdToDivIdMap.get(mapping.widgetId) || "undefined"
+      } (original: ${mapping.originalId})`
+    );
+  });
 
   return {
-    success: insertedElements.length > 0,
-    insertedElements,
-    batchResponses,
-    error:
-      insertedElements.length === 0
-        ? "No elements were successfully inserted"
-        : null,
+    extractedIds: dynamicIdStore.divIds,
+    mappings: mappings,
+    totalCount: dynamicIdStore.counter,
   };
 }
 
-function prepareInsertElementRequest(
-  originalRequest,
-  pageId,
-  flexWidgetId,
-  widgetId,
-  divId
-) {
-  const request = {
-    type: "post",
-    url: `/pages/${pageId}/insertElement?dm_batchReqId=${Math.random()
-      .toString(36)
-      .substr(2, 6)}`,
-    data: {
-      markup: originalRequest.data.markup
-        .replace(/widgetId\d+/g, widgetId)
-        .replace(/divId\d+/g, divId),
-      parent: flexWidgetId,
-      before: originalRequest.data.before || null,
-      defaultLocation: originalRequest.data.defaultLocation || false,
-    },
+export function clearDynamicIdStore() {
+  dynamicIdStore = {
+    divIds: [],
+    widgetIdToDivIdMap: new Map(),
+    counter: 0,
   };
-
-  return request;
 }
 
-async function updateFlexStructureWithMultipleElements(
+
+// Enhanced section processing that handles nested groups
+async function executeSectionBatchOperationsEnhanced(
   pageId,
   uuid,
   alias,
   section,
   flexWidgetId,
-  batchRequestBody,
-  dynamicIds,
-  insertedElements
+  flexStructureSection,
+  childGroups,
+  sectionWidgets
 ) {
-  console.log("\n===== UPDATING FLEX STRUCTURE WITH MULTIPLE ELEMENTS =====");
-
-  const flexStructureRequests = batchRequestBody.filter(
-    (req) => req.url && req.url.includes("flexStructure")
-  );
-
-  if (flexStructureRequests.length === 0) {
-    console.log("No flex structure requests found");
-    return { success: true, response: null };
-  }
-
-  const flexRequest = flexStructureRequests[0];
+  console.log(`\n===== EXECUTING ENHANCED SECTION BATCH OPERATIONS =====`);
+  console.log(`Section ID: ${section.sectionId}`);
+  console.log(`Flex Widget ID: ${flexWidgetId}`);
+  console.log(`Child Groups: ${childGroups.length}`);
+  console.log(`Section Widgets: ${sectionWidgets.length}`);
 
   try {
-    // FIXED: More lenient validation approach
-    console.log("Validating original flex structure data...");
-    let validatedOriginalData;
-    try {
-      validatedOriginalData = FlexStructureSchema.parse(flexRequest.data);
-      console.log("✓ Original flex structure validation passed");
-    } catch (validationError) {
-      console.warn("Original flex structure validation failed, using data as-is:", validationError.errors);
-      validatedOriginalData = flexRequest.data; // Use original data if validation fails
-    }
-
-    // Prepare the flex structure data with all inserted elements
-    const updatedFlexData = prepareEnhancedFlexStructureData(
-      validatedOriginalData,
-      section,
-      flexWidgetId,
-      dynamicIds,
-      insertedElements
+    // Enhanced ID mapping for nested structures
+    console.log("\n--- Enhanced ID Mapping Process ---");
+    const idMapping = mapSectionTemplateToOriginalIds(flexStructureSection, section);
+    
+    // Get recursive child groups
+    const recursiveChildGroups = getDynamicChildGroupsRecursive(
+      flexStructureSection.elements,
+      section.parentGroupId
     );
-
-    // FIXED: More lenient validation for updated data
-    console.log("Validating updated flex structure data...");
-    let validatedUpdatedData;
-    try {
-      validatedUpdatedData = FlexStructureSchema.parse(updatedFlexData);
-      console.log("✓ Updated flex structure validation passed");
-    } catch (validationError) {
-      console.warn("Updated flex structure validation failed, using data as-is:", validationError.errors);
-      validatedUpdatedData = updatedFlexData; // Use updated data if validation fails
-    }
-
-    console.log(
-      "Final Flex Structure Data:",
-      JSON.stringify(validatedUpdatedData, null, 2)
-    );
-
-    const flexUpdateRequest = {
-      type: "put",
-      url: `/pages/${uuid}/flexStructure?dm_batchReqId=${Math.random()
-        .toString(36)
-        .substr(2, 6)}`,
-      data: validatedUpdatedData,
-    };
-
-    const response = await fetch(
-      `${DUDA_API_CONFIG.baseUrl}/uis/batch?op=update%20flex%20structure&dm_device=desktop&currentEditorPageId=${pageId}`,
-      {
-        method: "POST",
-        headers: getBatchHeaders(alias),
-        body: JSON.stringify([flexUpdateRequest]),
-      }
-    );
-
-    const responseText = await response.text();
-    console.log("Flex Structure Update Response:", responseText);
-
-    if (!response.ok) {
-      // Try to parse the error response for more details
-      let errorDetails = responseText;
-      try {
-        const errorJson = JSON.parse(responseText);
-        errorDetails = errorJson.message || errorJson.error_code || responseText;
-      } catch (e) {
-        // Response is not JSON, use as-is
-      }
+    
+    console.log("\n--- Recursive Child Groups Analysis ---");
+    recursiveChildGroups.forEach((group, index) => {
+      console.log(`Group ${index + 1}: ${group.id} (Level ${group.level})`);
+      console.log(`  - Direct widgets: ${group.widgets.length}`);
+      console.log(`  - Nested groups: ${group.nestedGroups.length}`);
       
-      throw new Error(
-        `Flex structure update failed: ${response.status} - ${errorDetails}`
+      if (group.nestedGroups.length > 0) {
+        group.nestedGroups.forEach((nestedGroup, nestedIndex) => {
+          console.log(`    Nested ${nestedIndex + 1}: ${nestedGroup.id} (${nestedGroup.widgets.length} widgets)`);
+        });
+      }
+    });
+
+    const flexStructureWithOriginalIds = applyOriginalIdsToFlexStructure(
+      flexStructureSection,
+      idMapping
+    );
+
+    console.log("✓ Using flex structure with original IDs (including nested groups)");
+
+    // Continue with the rest of the processing...
+    const processedWidgets = [];
+    const batchResponses = [];
+    const insertElementResponses = [];
+
+    for (const widget of sectionWidgets) {
+      console.log(`\n--- Processing Widget: ${widget.id} ---`);
+
+      // Get HTML for this widget dynamically
+      const widgetHtml = getHtmlForWidgetId(widget.id);
+
+      if (widgetHtml && widgetHtml.html) {
+        console.log(`  ✅ Found matching HTML (${widgetHtml.matchType}, score: ${widgetHtml.matchScore})`);
+        
+        // Make insert element API call
+        const insertResult = await insertElementApi(pageId, flexWidgetId, widgetHtml.html);
+
+        // Extract and store dynamic ID
+        let divId = null;
+        if (insertResult.success && insertResult.parsedResponse) {
+          divId = extractAndStoreDynamicId(widget.id, insertResult);
+        }
+
+        insertElementResponses.push({
+          widgetId: widget.id,
+          flexWidgetId: flexWidgetId,
+          insertResult: insertResult,
+          htmlUsed: widgetHtml.html,
+          matchType: widgetHtml.matchType,
+          matchScore: widgetHtml.matchScore,
+          extractedDivId: divId,
+        });
+
+        processedWidgets.push({
+          widgetId: widget.id,
+          widgetType: widget.widgetType,
+          flexWidgetId: flexWidgetId,
+          htmlData: widgetHtml.html,
+          textData: widgetHtml.text,
+          attributes: widgetHtml.attributes,
+          matchType: widgetHtml.matchType,
+          matchScore: widgetHtml.matchScore,
+          processed: true,
+          hasContent: true,
+          insertElementSuccess: insertResult.success,
+          insertElementStatus: insertResult.status,
+          extractedDivId: divId,
+        });
+
+        // Add delay between insert element calls
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      } else {
+        console.log(`  ❌ No HTML match found for widget ${widget.id}`);
+        
+        processedWidgets.push({
+          widgetId: widget.id,
+          widgetType: widget.widgetType,
+          flexWidgetId: flexWidgetId,
+          htmlData: null,
+          textData: null,
+          attributes: {},
+          matchType: "none",
+          matchScore: 0,
+          processed: false,
+          hasContent: false,
+          insertElementSuccess: false,
+          insertElementStatus: null,
+          extractedDivId: null,
+        });
+      }
+    }
+
+    // Update flex structure with original IDs
+    const updatedExternalIds = new Map();
+    insertElementResponses.forEach((response) => {
+      if (response.extractedDivId) {
+        updatedExternalIds.set(response.widgetId, response.extractedDivId);
+      }
+    });
+
+    let flexStructureUpdateResult = null;
+    if (updatedExternalIds.size > 0) {
+      console.log(`\n🔄 Updating flex structure with ${updatedExternalIds.size} new external IDs...`);
+      flexStructureUpdateResult = await updateFlexStructureApi(
+        pageId,
+        uuid,
+        flexStructureWithOriginalIds,
+        updatedExternalIds
       );
     }
 
+    // Create final updated flex structure
+    const finalUpdatedFlexStructure = JSON.parse(JSON.stringify(flexStructureWithOriginalIds));
+    Object.entries(finalUpdatedFlexStructure.elements).forEach(([elementId, element]) => {
+      if (element.type === "widget_wrapper" && updatedExternalIds.has(elementId)) {
+        element.externalId = updatedExternalIds.get(elementId);
+      }
+    });
+
+    const successfulInserts = insertElementResponses.filter((r) => r.insertResult.success).length;
+    const failedInserts = insertElementResponses.filter((r) => !r.insertResult.success).length;
+
+    console.log(`\n✅ Enhanced section processing completed:`);
+    console.log(`  - Total widgets: ${sectionWidgets.length}`);
+    console.log(`  - Widgets with HTML: ${processedWidgets.filter((w) => w.hasContent).length}`);
+    console.log(`  - Successfully processed: ${processedWidgets.filter((w) => w.processed).length}`);
+    console.log(`  - Insert element calls successful: ${successfulInserts}`);
+    console.log(`  - Insert element calls failed: ${failedInserts}`);
+    console.log(`  - Recursive child groups found: ${recursiveChildGroups.length}`);
+
     return {
-      success: true,
-      response: JSON.parse(responseText),
+      success: successfulInserts > 0,
+      insertedElements: processedWidgets.filter((w) => w.processed),
+      batchResponses: batchResponses,
+      insertElementResponses: insertElementResponses,
+      processedWidgets: processedWidgets.length,
+      widgetsWithHtml: processedWidgets.filter((w) => w.hasContent).length,
+      successfulInserts: successfulInserts,
+      failedInserts: failedInserts,
+      childGroups: childGroups.length,
+      recursiveChildGroups: recursiveChildGroups.length,
+      flexStructureUpdateResult: flexStructureUpdateResult,
+      extractedDivIds: Array.from(updatedExternalIds.values()),
+      updatedFlexStructure: finalUpdatedFlexStructure,
+      originalIdMapping: Object.fromEntries(idMapping),
+      error: null,
     };
   } catch (error) {
-    console.error("Error updating flex structure:", error);
-    
-    // FIXED: Better error handling for different error types
-    if (error.name === 'ZodError') {
-      console.error("Zod validation errors:", error.errors);
-      return {
-        success: false,
-        error: `Validation failed: ${error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')}`,
-        response: null,
-      };
-    }
-    
+    console.error("Enhanced section batch operations failed:", error);
     return {
       success: false,
       error: error.message,
-      response: null,
+      insertedElements: [],
+      batchResponses: [],
+      insertElementResponses: [],
+      processedWidgets: 0,
+      widgetsWithHtml: 0,
+      successfulInserts: 0,
+      failedInserts: 0,
+      childGroups: 0,
+      recursiveChildGroups: 0,
+      flexStructureUpdateResult: null,
+      extractedDivIds: [],
+      updatedFlexStructure: null,
     };
   }
 }
-
-// FIXED: Enhanced flex structure preparation with better error handling
-function prepareEnhancedFlexStructureData(
-  originalData,
-  section,
-  flexWidgetId,
-  dynamicIds,
-  insertedElements
-) {
-  console.log("\n===== PREPARING ENHANCED FLEX STRUCTURE DATA =====");
-
-  // Deep clone the original data to avoid mutations
-  const flexData = JSON.parse(JSON.stringify(originalData));
-
-  // FIXED: More robust ID replacement with null checks
-  const replaceIds = (obj) => {
-    if (typeof obj === "string") {
-      let result = obj;
-      
-      // Replace section-related IDs
-      if (flexWidgetId && obj.includes("flexWidgetId")) {
-        result = result.replace(/flexWidgetId/g, flexWidgetId);
-      }
-      
-      // Replace section IDs with proper null checks
-      const sectionReplacements = {
-        'section.elementId': section.elementId || section.sectionId,
-        'section.sectionId': section.sectionId,
-        'section.gridId': section.gridId,
-        'section.parentGroupId': section.parentGroupId,
-        'section.childGroup1Id': section.childGroup1Id,
-        'section.childGroup2Id': section.childGroup2Id,
-      };
-      
-      for (const [placeholder, replacement] of Object.entries(sectionReplacements)) {
-        if (replacement && result.includes(placeholder)) {
-          result = result.replace(new RegExp(placeholder, 'g'), replacement);
-        }
-      }
-
-      // Replace dynamic widget and div IDs
-      if (dynamicIds.widgetIdMap) {
-        dynamicIds.widgetIdMap.forEach((realId, placeholder) => {
-          if (result.includes(placeholder)) {
-            result = result.replace(new RegExp(placeholder, 'g'), realId);
-          }
-        });
-      }
-
-      if (dynamicIds.divIdMap) {
-        dynamicIds.divIdMap.forEach((realId, placeholder) => {
-          if (result.includes(placeholder)) {
-            result = result.replace(new RegExp(placeholder, 'g'), realId);
-          }
-        });
-      }
-
-      return result;
-    }
-
-    if (Array.isArray(obj)) {
-      return obj.map(replaceIds);
-    }
-
-    if (obj && typeof obj === "object") {
-      const newObj = {};
-      for (const [key, value] of Object.entries(obj)) {
-        const newKey = replaceIds(key);
-        newObj[newKey] = replaceIds(value);
-      }
-      return newObj;
-    }
-
-    return obj;
-  };
-
-  const processedData = replaceIds(flexData);
-
-  // FIXED: Enhanced element processing with better error handling
-  if (processedData.elements && insertedElements.length > 0) {
-    insertedElements.forEach((element) => {
-      if (processedData.elements[element.widgetId] && element.insertedElementId) {
-        processedData.elements[element.widgetId].externalId = element.insertedElementId;
-        console.log(
-          `Updated widget ${element.widgetId} with externalId: ${element.insertedElementId}`
-        );
-      }
-    });
-  }
-
-  // FIXED: Better validation and fallback values
-  if (!processedData.id) {
-    processedData.id = section.sectionId || generateUniqueId();
-  }
-
-  if (!processedData.rootContainerId) {
-    processedData.rootContainerId = section.sectionId;
-  }
-
-  // FIXED: Enhanced parent-child relationship validation
-  if (processedData.elements) {
-    Object.keys(processedData.elements).forEach(elementId => {
-      const element = processedData.elements[elementId];
-      
-      // Ensure parentId is properly formatted
-      if (element.parentId && Array.isArray(element.parentId) && element.parentId.length === 1) {
-        element.parentId = element.parentId[0];
-      }
-      
-      // Ensure children array exists
-      if (!Array.isArray(element.children)) {
-        element.children = [];
-      }
-      
-      // Ensure data object exists with proper structure
-      if (!element.data || typeof element.data !== 'object') {
-        element.data = {};
-      }
-      
-      // Ensure customClassName exists
-      if (element.customClassName === undefined) {
-        element.customClassName = "";
-      }
-      
-      // Ensure name exists
-      if (element.name === undefined) {
-        element.name = "";
-      }
-    });
-  }
-
-  // FIXED: Ensure styles structure is valid
-  if (!processedData.styles || typeof processedData.styles !== 'object') {
-    processedData.styles = {
-      breakpoints: {
-        common: {
-          idToRules: {}
-        }
-      }
-    };
-  }
-
-  // Ensure breakpoints structure
-  if (!processedData.styles.breakpoints) {
-    processedData.styles.breakpoints = {
-      common: {
-        idToRules: {}
-      }
-    };
-  }
-
-  // Ensure common breakpoint exists
-  if (!processedData.styles.breakpoints.common) {
-    processedData.styles.breakpoints.common = {
-      idToRules: {}
-    };
-  }
-
-  return processedData;
-}
-
-// Keep the existing helper functions
-function extractInsertedElementIdFromResponse(responseData) {
-  if (!responseData) {
-    console.log("No response data provided");
-    return null;
-  }
-
-  try {
-    console.log("Extracting element ID from response...");
-
-    let elementHtml = null;
-
-    // Handle different response structures
-    if (typeof responseData === "object" && !Array.isArray(responseData)) {
-      const insertElementKey = Object.keys(responseData).find((key) =>
-        key.includes("insertElement")
-      );
-
-      if (insertElementKey) {
-        const insertData = responseData[insertElementKey];
-        if (insertData && insertData.element) {
-          elementHtml = insertData.element;
-        }
-      }
-    }
-
-    if (Array.isArray(responseData)) {
-      const insertResponse = responseData.find(
-        (item) => item.url && item.url.includes("insertElement")
-      );
-
-      if (
-        insertResponse &&
-        insertResponse.data &&
-        insertResponse.data.element
-      ) {
-        elementHtml = insertResponse.data.element;
-      }
-    }
-
-    if (!elementHtml) {
-      if (responseData.element) {
-        elementHtml = responseData.element;
-      } else if (responseData.data && responseData.data.element) {
-        elementHtml = responseData.data.element;
-      }
-    }
-
-    if (!elementHtml) {
-      console.log("No element HTML found in response");
-      return null;
-    }
-
-    console.log("Element HTML to parse:", elementHtml);
-
-    // Parse the HTML to extract the ID
-    const $ = cheerio.load(elementHtml);
-    let elementId = null;
-
-    const selectors = [
-      "div[id]",
-      "[id]",
-      "div.dmNewParagraph[id]",
-      "div[duda_id]",
-      "[data-element-id]",
-    ];
-
-    for (const selector of selectors) {
-      const elements = $(selector);
-      if (elements.length > 0) {
-        const firstElement = elements.first();
-        elementId =
-          firstElement.attr("id") ||
-          firstElement.attr("duda_id") ||
-          firstElement.attr("data-element-id");
-
-        if (elementId) {
-          console.log(
-            `Found element ID using selector "${selector}":`,
-            elementId
-          );
-          break;
-        }
-      }
-    }
-
-    if (!elementId) {
-      $("*").each((i, element) => {
-        const $el = $(element);
-        const id = $el.attr("id");
-        if (id && id.length > 0) {
-          elementId = id;
-          console.log("Found ID from general search:", elementId);
-          return false;
-        }
-      });
-    }
-
-    if (elementId) {
-      console.log("Successfully extracted element ID:", elementId);
-      return elementId;
-    } else {
-      console.log("No element ID found in HTML");
-      return null;
-    }
-  } catch (error) {
-    console.error("Error extracting inserted element ID from response:", error);
-    return null;
-  }
-}
-
-function getBatchHeaders(alias) {
-  return {
-    accept: "*/*",
-    "accept-language": "en-US,en;q=0.9",
-    "content-type": "application/json",
-    dm_loc: "/home/site/41e002a2/duda1",
-    dsid: "1048635",
-    origin: "https://my.duda.co",
-    priority: "u=1, i",
-    referer: "https://my.duda.co/home/site/41e002a2/duda1",
-    "sec-ch-ua":
-      '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Linux"',
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-site": "same-origin",
-    "user-agent":
-      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
-    "x-requested-with": "XMLHttpRequest",
-    cookie:
-      "_fbp=fb.1.1748410352276.947939578829518178; hubspotutk=c5a494184d4e2afcd3e531233734eb58; _dm_ga_clientId=b2dba1c7-396b-458f-8a0f-deb72154dbcb; language=en; landingPage=/signup; accountId=794969; accountUuid=41ea951a2a304fa38d59162280dae36b; productUuid=52a9926b5dc94de688c1571d574ff75a; IR_PI=07615b33-3bb7-11f0-9b80-bd4b936f5cf7%7C1748431762162; account_uuid=41ea951a2a304fa38d59162280dae36b; dm_ac_tokens=ZLDMCMDy3OL75EfI6RdDAtbVp0BGN0Sz7Ls8wxnYUOi4ozbZmsPI5A==; _gd_visitor=48c47a36-fbad-4877-8795-865d3648ff99; _gd_svisitor=95d70b17b5203c002668f367c2010000883e0100; __zlcmid=1RsneD9izLkntAc; __adroll_fpc=c54f649a952dbe827da56df24d8c71a5-1748431859407; _dm_remember_me=VlRyWmdyZHdiJTJCYldvY2l6cUlxc3FnJTNEJTNEOkVkUWZRdnppYlpSJTJGYUlRRU9TcWtadyUzRCUzRA; first_conversion_medium_touchpoints=null%3B%20null%3B%20null%3B%20null; first_conversion_campaign_touchpoints=null%3B%20null%3B%20null%3B%20null; first_conversion_term_touchpoints=null%3B%20null%3B%20null%3B%20null; first_conversion_content_touchpoints=null%3B%20null%3B%20null%3B%20null; first_conversion_source_touchpoints=direct%3B%20direct%3B%20direct%3B%20di; _conv_r=s%3Awww.google.com*m%3Aorganic*t%3Aundefined*c%3A; _ce.s=v~0ea57fc055a4db8b04677f8e3c2cb6b7d4a6dd82~lcw~1750918172964~vir~returning~lva~1750910321509~vpv~11~v11.cs~268877~v11.s~2ae70e00-3b85-11f0-a3bc-2353b47aaaf5~v11.vs~0ea57fc055a4db8b04677f8e3c2cb6b7d4a6dd82~v11ls~2ae70e00-3b85-11f0-a3bc-2353b47aaaf5~v11.ss~1748431762239~v11nv~0~v11.fsvd~e30%3D~gtrk.la~mcczh0ro~lcw~1750918172966; _gid=GA1.2.1174334737.1751249076; _conv_v=vi%3A1*sc%3A20*cs%3A1751249889*fs%3A1748410335*pv%3A41*exp%3A%7B%7D*seg%3A%7B%7D*ps%3A1750910306; __ar_v4=%7CNK6BCP2ZPJC2BEAS7JMXC2%3A20250630%3A1%7C5PYFNWAESVGU5BU47WLRIT%3A20250630%3A1%7CLVLOIN3JF5FT3CD5CBETI7%3A20250630%3A1; AWSALBTG=J2ANDLfHbomZfBh/cOyP/2sWBreUUb/9OdUHL1Fg8Elq1ygpKbBsmhKuOgq/0OUNUCEddS+Mpw0sM+OrUaGAsowO9OMm2c5/eq8nu+GTm8Z1pEVh0jEqAGvK6uaEiCycBahikDU0n8ZzlQ0mwGXAWog2b8EzXGmPIXlrWY2zPmBCWAzJbio=; __hssrc=1; IR_gbd=duda.co; _gd_session=8d785529-1da4-4feb-8b3a-84950c04bade; __hstc=244318362.c5a494184d4e2afcd3e531233734eb58.1748410360364.1751595905225.1751600406940.114; _dm_se_token_me=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJhY2NvdW50VXVpZCI6IjQxZWE5NTFhMmEzMDRmYTM4ZDU5MTYyMjgwZGFlMzZiIiwiYWNjb3VudE5hbWUiOiJtaXNoYW1Ad2lnb2guYWkiLCJjcmVhdGlvblRpbWUiOjE3NTE2MDA1MzA1NTYsImV4cCI6MTc1MTYwMjkzMH0.-W3zGhHgFkrXCUK2k0k_dYTUzjis0mtAtmdXuakbft8; _dm_account=%7B%22name%22%3A%22misham%40wigoh.ai%22%2C%22uuid%22%3A%2241ea951a2a304fa38d59162280dae36b%22%2C%22gaType%22%3A%22SMB%22%2C%22lastLogin%22%3A1751600401000%7D; JSESSIONID=6AC2008D9CBA8407F5D04D03B03F960E; _gcl_au=1.1.523935755.1748410344; _ga=GA1.1.b2dba1c7-396b-458f-8a0f-deb72154dbcb; __hssc=244318362.3.1751600406940; IR_13628=1751600655667%7C0%7C1751600655667%7C%7C; _uetsid=98e372b0555611f0869ebdffd727728c; _uetvid=24df0c103b8511f0b71eb52d29352553; _ga_GFZCS4CS4Q=GS2.1.s1751595905$o21$g1$t1751600667$j41$l0$h0; AWSALB=gSL0NEyXPmhwQP96X0TtskgT9Fh0WaUEmBs0IP/mk/Vva10AjxtzUda+pp9ppFf0y7M95l7IfaxeN7p6MhKLL5YQBFRQ6g7LHlYP3Xa1J2YmYZ99xmqAQ93zRmG+RfddRvHQwaH6Vkvk1ofcvEKTgc38Z3n5nuPhyybNZb+y/xU+oVR3mCdlX7nroozN6A==",
-    ...(alias && { "X-Site-Alias": alias }),
-  };
-}
-
-// Export the enhanced functions
-export {
-  analyzeBatchRequestBody,
-  generateDynamicIdsForBatch,
-  prepareEnhancedFlexStructureData,
-};

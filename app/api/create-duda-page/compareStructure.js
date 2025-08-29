@@ -1,7 +1,3 @@
-// compareStructure.js
-// Function to compare Primary Batch Request Body structure with Flex Structure response
-// UPDATED: Focus only on parent groups and their child counts
-
 /**
  * Extracts parent group structure and child counts from Primary Batch Request Body
  * @param {Array} primaryBatchBody - The primary batch request body array
@@ -618,23 +614,40 @@ export function compareStructuresWithChildGroupExtraction(
     (sectionComparison, sectionIndex) => {
       if (sectionComparison.parentGroupDetails) {
         const parentGroupsNeedingChildren =
-          sectionComparison.parentGroupDetails.filter(
-            (detail) => detail.primaryDirectChildren > 2
-          );
+          sectionComparison.parentGroupDetails.filter((detail, groupIndex) => {
+            // Changed condition: Check if primary has more children than flex
+            const needsChildGroups =
+              detail.primaryDirectChildren > detail.flexDirectChildren;
+
+            // Add the logging here
+            if (needsChildGroups) {
+              console.log(
+                `Section ${sectionIndex + 1}, Parent Group ${
+                  groupIndex + 1
+                } needs child groups: Primary(${
+                  detail.primaryDirectChildren
+                }) > Flex(${detail.flexDirectChildren})`
+              );
+            }
+
+            return needsChildGroups;
+          });
 
         if (parentGroupsNeedingChildren.length > 0) {
           sectionsRequiringChildGroups.push({
             sectionIndex: sectionIndex + 1,
             parentGroupsCount: parentGroupsNeedingChildren.length,
-            parentGroups: parentGroupsNeedingChildren.map((detail) => ({
-              groupIndex: detail.groupIndex,
-              primaryGroupId: detail.primaryGroupId,
-              flexGroupId: detail.flexGroupId,
-              primaryDirectChildren: detail.primaryDirectChildren,
-              flexDirectChildren: detail.flexDirectChildren,
-              childrenDifference:
-                detail.primaryDirectChildren - detail.flexDirectChildren,
-            })),
+            parentGroups: parentGroupsNeedingChildren.map(
+              (detail, groupIndex) => ({
+                groupIndex: groupIndex, // This should be the actual group index from the detail
+                primaryGroupId: detail.primaryGroupId,
+                flexGroupId: detail.flexGroupId,
+                primaryDirectChildren: detail.primaryDirectChildren,
+                flexDirectChildren: detail.flexDirectChildren,
+                childrenDifference:
+                  detail.primaryDirectChildren - detail.flexDirectChildren,
+              })
+            ),
           });
           totalPrimaryGroupsWithMoreThan2Children +=
             parentGroupsNeedingChildren.length;

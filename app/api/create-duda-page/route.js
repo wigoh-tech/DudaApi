@@ -2,39 +2,34 @@ import { NextResponse } from "next/server";
 import { createPageFromScratch } from "./createPage";
 import { getFlexStructure, extractHierarchicalIds } from "./flexStructure";
 import { parsePageHtml } from "./htmlParser";
-import { executeBatchOperations } from "./batchOperations";
+import {
+  executeBatchOperations,
+} from "./batchOperations";
 import { handleError } from "./utils";
 import { handleDynamicInsertApi } from "./insertApi"; // Import the new function
 import {
   extractWidgetIds,
   getWidgetIdsFlat,
-  matchWidgetIdsWithHtmlContent,
-  getDetailedMatchInfo,
   matchWidgetIdsWithElementsData,
   getDetailedContentForMatches,
   filterMatches,
 } from "./widgetExtractor";
 import {
   parseAboutHtmlPage,
-  matchWidgetIdsWithElements,
-  getInnerContentForMatches,
 } from "./parseAboutHtmlPage";
 import {
-  compareStructures,
   compareStructuresWithChildGroupExtraction,
   extractPrimaryBatchGroups,
   extractFlexStructureGroups,
   printStructureExplanation,
 } from "./compareStructure";
 import {
-  extractFlexStructureIdsForChildGroups,
   processChildGroupExtractions,
   addChildGroup,
 } from "./addChildFlexStructure";
 import { handleChildDeletions } from "./deleteColumn";
 import {
   printSectionDetailsFromDeletionResult,
-  extractIdsFromDeletionResult,
   processExtractedSectionsForFlexStructure,
 } from "./updateFlexStructure";
 
@@ -368,48 +363,6 @@ export async function POST(request) {
         exactMatches: filteredMatches.exactMatches.length,
         primarySourceMatches: filteredMatches.primarySourceMatches.length,
         highScoreMatches: filteredMatches.highScoreMatches.length,
-      });
-    }
-
-    // Step 7: Original widget matching (keeping for backwards compatibility)
-    console.log("\n=== STEP 7: ORIGINAL WIDGET MATCHING ===");
-    let widgetMatches = [];
-    let detailedMatchInfo = {};
-    let htmlElementMatches = [];
-
-    if (aboutPageData.success && aboutPageData.dmDivHtml) {
-      console.log("✅ Original widget matching API triggered successfully");
-
-      // Match widget IDs from flex structure with HTML content
-      widgetMatches = matchWidgetIdsWithHtmlContent(
-        initialFlexStructureData,
-        aboutPageData.dmDivHtml
-      );
-
-      // Get detailed match information
-      detailedMatchInfo = getDetailedMatchInfo(
-        initialFlexStructureData,
-        aboutPageData.dmDivHtml
-      );
-
-      // Match with elements if elementsWithIds is available
-      if (aboutPageData.elementsWithIds) {
-        const flatWidgetIds = getWidgetIdsFlat(initialFlexStructureData);
-        htmlElementMatches = matchWidgetIdsWithElements(
-          aboutPageData.elementsWithIds,
-          flatWidgetIds
-        );
-
-        // Get inner content for matches
-        const matchesWithContent =
-          getInnerContentForMatches(htmlElementMatches);
-        htmlElementMatches = matchesWithContent;
-      }
-
-      console.log("Original Widget Matching API Response:", {
-        htmlContentMatches: widgetMatches.length,
-        elementMatches: htmlElementMatches.length,
-        matchRate: detailedMatchInfo.summary?.matchRate || "0%",
       });
     }
 
@@ -1318,17 +1271,123 @@ export async function POST(request) {
       console.log("Using fallback flex structure data due to error");
     }
 
+    // Step 9f: FINAL HTML PARSING USING FINAL FLEX STRUCTURE DATA
+    console.log(
+      "\n=== STEP 9f: FINAL HTML PARSING USING FINAL FLEX STRUCTURE ==="
+    );
+    let finalMatchedSections = null;
+    let finalHtmlIds = null;
+    let finalFlexWidgetIds = null;
+
+    try {
+      console.log("✅ Parsing HTML with final flex structure data...");
+
+      // Parse HTML to match sections using final extracted IDs
+      const finalHtmlParsingResult = await parsePageHtml(
+        alias,
+        finalExtractedIds
+      );
+
+      finalMatchedSections = finalHtmlParsingResult.matchedSections;
+      finalHtmlIds = finalHtmlParsingResult.htmlIds;
+      finalFlexWidgetIds = finalHtmlParsingResult.flexWidgetIds;
+
+      console.log("✅ Final HTML parsing completed successfully");
+      console.log("Final HTML Parsing Results:", {
+        matchedSections: finalMatchedSections?.length || 0,
+        htmlIds: finalHtmlIds?.length || 0,
+        flexWidgetIds: finalFlexWidgetIds?.length || 0,
+      });
+
+      // Enhanced logging for final HTML parsing results
+      console.log("\n=== FINAL HTML PARSING BREAKDOWN ===");
+      console.log("Final Matched Sections:", finalMatchedSections);
+      console.log("Final HTML IDs:", finalHtmlIds);
+      console.log("Final Flex Widget IDs:", finalFlexWidgetIds);
+
+      // Compare with initial HTML parsing results
+      console.log("\n=== COMPARISON: INITIAL vs FINAL HTML PARSING ===");
+      console.log("Initial HTML Parsing Results:", {
+        matchedSections: matchedSections?.length || 0,
+        htmlIds: htmlIds?.length || 0,
+        flexWidgetIds: flexWidgetIds?.length || 0,
+      });
+      console.log("Final HTML Parsing Results:", {
+        matchedSections: finalMatchedSections?.length || 0,
+        htmlIds: finalHtmlIds?.length || 0,
+        flexWidgetIds: finalFlexWidgetIds?.length || 0,
+      });
+
+      // Extract final flex structure IDs for comparison
+      const finalFlexStructureIds = extractFlexStructureIds(
+        finalFlexStructureData
+      );
+
+      // Create final widgetIdsOnly object
+      const finalWidgetIdsOnly = {
+        fromInputBatches: inputBatchIds, // This remains the same
+        fromFlexStructure: finalFlexStructureIds,
+        flatList: getWidgetIdsFlat(finalFlexStructureData).map((id) => ({
+          id,
+        })),
+        count: {
+          inputPrimary: inputBatchIds.primary.length,
+          inputSecondary: inputBatchIds.secondary.length,
+          flexStructure: finalFlexStructureIds.length,
+          total:
+            inputBatchIds.primary.length +
+            inputBatchIds.secondary.length +
+            finalFlexStructureIds.length,
+        },
+      };
+
+      console.log("\n=== FINAL WIDGET IDS SUMMARY ===");
+      console.log(
+        "Final Widget IDs Only:",
+        JSON.stringify(finalWidgetIdsOnly, null, 2)
+      );
+
+      // Log differences between initial and final widget counts
+      console.log("\n=== WIDGET COUNT COMPARISON ===");
+      console.log(
+        "Initial Flex Structure Widget Count:",
+        initialFlexStructureIds?.length || 0
+      );
+      console.log(
+        "Final Flex Structure Widget Count:",
+        finalFlexStructureIds?.length || 0
+      );
+      console.log(
+        "Difference:",
+        (finalFlexStructureIds?.length || 0) -
+          (initialFlexStructureIds?.length || 0)
+      );
+    } catch (error) {
+      console.error("❌ Error parsing HTML with final flex structure:", error);
+      console.error("Error stack:", error.stack);
+
+      // Fallback to initial HTML parsing results
+      finalMatchedSections = matchedSections;
+      finalHtmlIds = htmlIds;
+      finalFlexWidgetIds = flexWidgetIds;
+
+      console.log("Using fallback HTML parsing results due to error");
+    }
+
     // Step 10: Execute batch operations section by section with updated data
     console.log("\n=== STEP 10: BATCH OPERATIONS ===");
+
+    // Pass the enhanced widget matching data to batch operations
     const batchResults = await executeBatchOperationsSectionBySection(
       pageId,
       uuid,
       alias,
-      updatedExtractedIds,
-      htmlIds,
-      flexWidgetIds,
-      primaryBatchBody,
-      secondaryBatchBody
+      finalExtractedIds || updatedExtractedIds || initialExtractedIds, // Use final extracted IDs
+      finalHtmlIds || htmlIds, // Use final HTML IDs if available
+      finalFlexWidgetIds || flexWidgetIds, // Use final flex widget IDs if available
+      primaryBatchBody, // This is now the flex structure array
+      secondaryBatchBody,
+      updatedEnhancedMatching || initialEnhancedMatching // Pass the enhanced widget matching data
     );
 
     console.log("✅ Batch operations completed");
@@ -1390,44 +1449,47 @@ export async function POST(request) {
         // Widget IDs (using updated data)
         widgetIdsOnly: updatedWidgetIdsOnly,
 
-        // Enhanced widget matching results (both initial and updated)
-        enhancedWidgetMatching: {
-          initial: {
-            matches: initialEnhancedMatching.matches,
-            summary: initialEnhancedMatching.summary,
-            matchedWidgetIds: initialEnhancedMatching.matchedWidgetIds,
-            detailedMatches: initialEnhancedMatching.detailedMatches,
-            filteredMatches: {
-              exactMatches:
-                initialEnhancedMatching.filteredMatches?.exactMatches || [],
-            },
-          },
-          updated: {
-            matches: updatedEnhancedMatching.matches,
-            summary: updatedEnhancedMatching.summary,
-            matchedWidgetIds: updatedEnhancedMatching.matchedWidgetIds,
-            detailedMatches: updatedEnhancedMatching.detailedMatches,
-            filteredMatches: {
-              exactMatches:
-                updatedEnhancedMatching.filteredMatches?.exactMatches || [],
-            },
-          },
+        // Enhanced batch operations data
+        batchOperationsSummary: {
+          totalSections: batchResults.length,
+          successfulSections: batchResults.filter((r) => r.success).length,
+          failedSections: batchResults.filter((r) => !r.success).length,
+          primaryBatchExecutions: batchResults.filter((r) => r.primaryBatch)
+            .length,
+          secondaryBatchExecutions: batchResults.filter((r) => r.secondaryBatch)
+            .length,
+          totalWidgetsProcessed: batchResults.reduce(
+            (sum, r) =>
+              sum +
+              (r.primaryBatch?.processedWidgets || 0) +
+              (r.secondaryBatch?.processedWidgets || 0),
+            0
+          ),
+          totalChildGroups: batchResults.reduce(
+            (sum, r) =>
+              sum +
+              (r.primaryBatch?.childGroups || 0) +
+              (r.secondaryBatch?.childGroups || 0),
+            0
+          ),
+          sectionsWithWidgetMatching: batchResults.filter(
+            (r) =>
+              r.primaryBatch?.processedWidgets > 0 ||
+              r.secondaryBatch?.processedWidgets > 0
+          ).length,
         },
 
-        // Original widget matching (for backwards compatibility)
-        widgetMatching: {
-          htmlContentMatches: widgetMatches,
-          elementMatches: htmlElementMatches,
-          detailedMatchInfo: detailedMatchInfo,
-          matchSummary: {
-            totalWidgetMatches: widgetMatches.length,
-            totalElementMatches: htmlElementMatches.length,
-            matchesWithInnerContent: htmlElementMatches.filter(
-              (m) => m.hasInnerContent
-            ).length,
-            matchRate: detailedMatchInfo.summary?.matchRate || "0%",
-            matchesBySection: detailedMatchInfo.matchesBySection || {},
-            matchesByType: detailedMatchInfo.matchesByType || {},
+        // Enhanced widget matching results
+        enhancedWidgetMatching: {
+          initial: {
+            matches: initialEnhancedMatching?.matches || [],
+            summary: initialEnhancedMatching?.summary || {},
+            matchedWidgetIds: initialEnhancedMatching?.matchedWidgetIds || [],
+          },
+          updated: {
+            matches: updatedEnhancedMatching?.matches || [],
+            summary: updatedEnhancedMatching?.summary || {},
+            matchedWidgetIds: updatedEnhancedMatching?.matchedWidgetIds || [],
           },
         },
 
@@ -1677,6 +1739,89 @@ export async function POST(request) {
             },
           },
 
+          widgetProcessingSummary: {
+            totalWidgetsInFlexStructure:
+              updatedFlexStructureWidgetIds?.reduce(
+                (sum, section) => sum + section.totalWidgets,
+                0
+              ) || 0,
+            widgetsWithHtmlMatches:
+              updatedEnhancedMatching?.matches?.filter(
+                (m) => m.element?.hasInnerContent
+              ).length || 0,
+            exactMatches:
+              updatedEnhancedMatching?.filteredMatches?.exactMatches?.length ||
+              0,
+            partialMatches:
+              updatedEnhancedMatching?.matches?.filter(
+                (m) => m.matchType === "partial"
+              ).length || 0,
+            widgetsProcessedInBatch: batchResults.reduce(
+              (sum, r) =>
+                sum +
+                (r.primaryBatch?.processedWidgets || 0) +
+                (r.secondaryBatch?.processedWidgets || 0),
+              0
+            ),
+            matchingEfficiency:
+              updatedEnhancedMatching?.summary?.matchRate || "0%",
+          },
+
+          // Dynamic child groups summary
+          childGroupsSummary: {
+            totalChildGroupsFound: batchResults.reduce(
+              (sum, r) =>
+                sum +
+                (r.primaryBatch?.childGroups || 0) +
+                (r.secondaryBatch?.childGroups || 0),
+              0
+            ),
+            sectionsWithChildGroups: batchResults.filter(
+              (r) =>
+                r.primaryBatch?.childGroups > 0 ||
+                r.secondaryBatch?.childGroups > 0
+            ).length,
+            averageChildGroupsPerSection:
+              batchResults.length > 0
+                ? (
+                    batchResults.reduce(
+                      (sum, r) =>
+                        sum +
+                        (r.primaryBatch?.childGroups || 0) +
+                        (r.secondaryBatch?.childGroups || 0),
+                      0
+                    ) / batchResults.length
+                  ).toFixed(2)
+                : 0,
+          },
+
+          // Batch operations efficiency
+          batchOperationsEfficiency: {
+            successRate:
+              batchResults.length > 0
+                ? (
+                    (batchResults.filter((r) => r.success).length /
+                      batchResults.length) *
+                    100
+                  ).toFixed(2) + "%"
+                : "0%",
+            totalOperations: batchResults.filter(
+              (r) => r.primaryBatch || r.secondaryBatch
+            ).length,
+            successfulOperations: batchResults.filter(
+              (r) =>
+                r.primaryBatch?.success ||
+                false ||
+                r.secondaryBatch?.success ||
+                false
+            ).length,
+            failedOperations: batchResults.filter(
+              (r) =>
+                (r.primaryBatch && !r.primaryBatch.success) ||
+                (r.secondaryBatch && !r.secondaryBatch.success)
+            ).length,
+          },
+
           // Widget IDs summary (using updated data)
           widgetIdsSummary: {
             inputPrimaryCount: inputBatchIds.primary.length,
@@ -1730,7 +1875,7 @@ export async function POST(request) {
   }
 }
 
-// Fixed function to execute batch operations section by section
+// 2. Replace the existing executeBatchOperationsSectionBySection function
 async function executeBatchOperationsSectionBySection(
   pageId,
   uuid,
@@ -1739,29 +1884,57 @@ async function executeBatchOperationsSectionBySection(
   htmlIds,
   flexWidgetIds,
   primaryBatchBody,
-  secondaryBatchBody
+  secondaryBatchBody,
+  enhancedWidgetMatching = null
 ) {
   console.log("\n===== STARTING SECTION-BY-SECTION BATCH OPERATIONS =====");
   console.log(`Total sections to process: ${extractedIds.length}`);
+  console.log(`Total flex widget IDs available: ${flexWidgetIds?.length || 0}`);
   console.log(`Primary batch body provided: ${!!primaryBatchBody}`);
   console.log(`Secondary batch body provided: ${!!secondaryBatchBody}`);
+  console.log(`Enhanced widget matching provided: ${!!enhancedWidgetMatching}`);
+
+  // Log the flex widget ID mapping
+  console.log("\n=== FLEX WIDGET ID MAPPING ===");
+  extractedIds.forEach((section, index) => {
+    const flexWidgetIndex = Math.min(index, (flexWidgetIds?.length || 1) - 1);
+    const assignedFlexWidgetId =
+      flexWidgetIds?.[flexWidgetIndex] || "UNDEFINED";
+    console.log(
+      `Section ${index + 1} (${
+        section.sectionId
+      }) -> Flex Widget ID[${flexWidgetIndex}]: ${assignedFlexWidgetId}`
+    );
+  });
 
   const allResults = [];
 
+  // Process each section individually
   for (let i = 0; i < extractedIds.length; i++) {
     const section = extractedIds[i];
-    const htmlId = htmlIds[i];
-    const flexWidgetId = flexWidgetIds[i];
+
+    // Handle dynamic HTML ID assignment
+    const htmlIdIndex = Math.min(i, (htmlIds?.length || 1) - 1);
+    const htmlId = htmlIds?.[htmlIdIndex];
+
+    // Handle dynamic flex widget ID assignment
+    const flexWidgetIndex = Math.min(i, (flexWidgetIds?.length || 1) - 1);
+    const flexWidgetId = flexWidgetIds?.[flexWidgetIndex];
 
     console.log(`\n--- Processing Section ${i + 1} ---`);
     console.log(`Section ID: ${section.sectionId}`);
-    console.log(`HTML ID: ${htmlId}`);
-    console.log(`Flex Widget ID: ${flexWidgetId}`);
+    console.log(`HTML ID Index: ${htmlIdIndex}, Value: ${htmlId}`);
+    console.log(
+      `Flex Widget ID Index: ${flexWidgetIndex}, Value: ${flexWidgetId}`
+    );
 
     const sectionResult = {
       sectionIndex: i + 1,
       sectionId: section.sectionId,
       htmlIdUsed: htmlId,
+      flexWidgetIdUsed: flexWidgetId,
+      htmlIdIndex: htmlIdIndex,
+      flexWidgetIdIndex: flexWidgetIndex,
       primaryBatch: null,
       secondaryBatch: null,
       success: false,
@@ -1769,141 +1942,129 @@ async function executeBatchOperationsSectionBySection(
     };
 
     try {
-      // Execute primary batch for section i if provided
-      if (primaryBatchBody && primaryBatchBody.length > 0 && i === 0) {
-        console.log("✅ Primary batch API triggered for section 1");
+      let batchToProcess = null;
+      let batchType = null;
 
-        // Primary batch only for first section (index 0)
-        const primaryResult = await executeBatchOperations(
-          pageId,
-          uuid,
-          alias,
-          [section],
-          [htmlId],
-          [flexWidgetId],
-          primaryBatchBody
-        );
+      // Determine which batch to process for this section
+      if (primaryBatchBody && Array.isArray(primaryBatchBody)) {
+        // Handle dynamic assignment of batch bodies
+        let batchIndex = Math.min(i, primaryBatchBody.length - 1);
 
-        console.log(
-          "Primary batch API response:",
-          JSON.stringify(primaryResult, null, 2)
-        );
-
-        sectionResult.primaryBatch = {
-          success: primaryResult[0]?.success || false,
-          insertedElements: primaryResult[0]?.insertedElements || [],
-          batchResponses: primaryResult[0]?.batchResponses || [],
-          flexStructureUpdateResponse:
-            primaryResult[0]?.flexStructureUpdateResponse,
-          error: primaryResult[0]?.error,
-        };
-
-        console.log(
-          `Primary batch result: ${
-            sectionResult.primaryBatch.success ? "SUCCESS" : "FAILED"
-          }`
-        );
-        if (sectionResult.primaryBatch.error) {
-          console.log(
-            `Primary batch error: ${sectionResult.primaryBatch.error}`
-          );
+        // If we have more sections than batch bodies, cycle through them
+        if (i >= primaryBatchBody.length) {
+          batchIndex = i % primaryBatchBody.length;
         }
 
-        // Wait before proceeding to secondary batch
-        console.log("Waiting 2 seconds before proceeding...");
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      } else if (primaryBatchBody && primaryBatchBody.length > 0 && i !== 0) {
-        console.log(
-          "❌ Primary batch API not triggered - only executes for section 1"
-        );
-      }
-
-      // Execute secondary batch for section i if provided
-      if (secondaryBatchBody && secondaryBatchBody.length > 0 && i === 1) {
-        console.log("✅ Secondary batch API triggered for section 2");
-
-        // Secondary batch only for second section (index 1)
-        // Get fresh data for the current section only
-        const freshSectionData = await getFreshSectionData(
-          uuid,
-          alias,
-          section.sectionId
-        );
-
-        console.log("Fresh section data retrieved:", {
-          sectionId: freshSectionData.section.sectionId,
-          htmlId: freshSectionData.htmlId,
-          flexWidgetId: freshSectionData.flexWidgetId,
-        });
-
-        const secondaryResult = await executeBatchOperations(
-          pageId,
-          uuid,
-          alias,
-          [freshSectionData.section],
-          [freshSectionData.htmlId],
-          [freshSectionData.flexWidgetId],
-          secondaryBatchBody
-        );
-
-        console.log(
-          "Secondary batch API response:",
-          JSON.stringify(secondaryResult, null, 2)
-        );
-
-        sectionResult.secondaryBatch = {
-          success: secondaryResult[0]?.success || false,
-          insertedElements: secondaryResult[0]?.insertedElements || [],
-          batchResponses: secondaryResult[0]?.batchResponses || [],
-          flexStructureUpdateResponse:
-            secondaryResult[0]?.flexStructureUpdateResponse,
-          error: secondaryResult[0]?.error,
-        };
-
-        console.log(
-          `Secondary batch result: ${
-            sectionResult.secondaryBatch.success ? "SUCCESS" : "FAILED"
-          }`
-        );
-        if (sectionResult.secondaryBatch.error) {
+        if (primaryBatchBody[batchIndex]) {
+          batchToProcess = [primaryBatchBody[batchIndex]];
+          batchType = "primary";
           console.log(
-            `Secondary batch error: ${sectionResult.secondaryBatch.error}`
+            `✅ Primary batch API triggered for section ${
+              i + 1
+            } using batch index ${batchIndex} (total batches: ${
+              primaryBatchBody.length
+            })`
           );
         }
-      } else if (
-        secondaryBatchBody &&
-        secondaryBatchBody.length > 0 &&
-        i !== 1
-      ) {
-        console.log(
-          "❌ Secondary batch API not triggered - only executes for section 2"
-        );
+      } else if (secondaryBatchBody && Array.isArray(secondaryBatchBody)) {
+        const secondaryIndex = i - (primaryBatchBody?.length || 0);
+        if (secondaryIndex >= 0 && secondaryIndex < secondaryBatchBody.length) {
+          batchToProcess = [secondaryBatchBody[secondaryIndex]];
+          batchType = "secondary";
+          console.log(`✅ Secondary batch API triggered for section ${i + 1}`);
+        }
       }
 
-      // Determine overall success based on which batches should execute for this section
-      const shouldExecutePrimary =
-        primaryBatchBody && primaryBatchBody.length > 0 && i === 0;
-      const shouldExecuteSecondary =
-        secondaryBatchBody && secondaryBatchBody.length > 0 && i === 1;
+      // Validate we have required IDs
+      if (!flexWidgetId) {
+        console.warn(
+          `⚠️ Section ${
+            i + 1
+          } missing Flex Widget ID - this will cause API failures`
+        );
+        sectionResult.error = "Missing Flex Widget ID";
+        allResults.push(sectionResult);
+        continue;
+      }
 
-      sectionResult.success =
-        (!shouldExecutePrimary || sectionResult.primaryBatch?.success) &&
-        (!shouldExecuteSecondary || sectionResult.secondaryBatch?.success);
+      // Execute batch operation if we have data to process
+      if (batchToProcess && batchToProcess.length > 0) {
+        try {
+          const batchResult = await executeBatchOperations(
+            pageId,
+            uuid,
+            alias,
+            [section],
+            [htmlId],
+            [flexWidgetId], // Pass the correctly assigned flex widget ID
+            batchToProcess,
+            enhancedWidgetMatching
+          );
 
-      // If no batch should execute for this section, mark as success
-      if (!shouldExecutePrimary && !shouldExecuteSecondary) {
+          console.log(
+            `${batchType} batch API response for section ${i + 1}:`,
+            JSON.stringify(batchResult, null, 2)
+          );
+
+          const resultData = {
+            success: batchResult[0]?.success || false,
+            insertedElements: batchResult[0]?.insertedElements || [],
+            batchResponses: batchResult[0]?.batchResponses || [],
+            processedWidgets: batchResult[0]?.processedWidgets || 0,
+            childGroups: batchResult[0]?.childGroups || 0,
+            error: batchResult[0]?.error,
+          };
+
+          if (batchType === "primary") {
+            sectionResult.primaryBatch = resultData;
+          } else {
+            sectionResult.secondaryBatch = resultData;
+          }
+
+          sectionResult.success = resultData.success;
+
+          console.log(
+            `${batchType} batch result for section ${i + 1}: ${
+              resultData.success ? "SUCCESS" : "FAILED"
+            }`
+          );
+
+          // Add delay between API calls to avoid rate limiting
+          if (i < extractedIds.length - 1) {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        } catch (batchError) {
+          console.error(
+            `❌ Error executing ${batchType} batch for section ${i + 1}:`,
+            batchError
+          );
+
+          const errorData = {
+            success: false,
+            error: batchError.message,
+            insertedElements: [],
+            batchResponses: [],
+            processedWidgets: 0,
+            childGroups: 0,
+          };
+
+          if (batchType === "primary") {
+            sectionResult.primaryBatch = errorData;
+          } else {
+            sectionResult.secondaryBatch = errorData;
+          }
+
+          sectionResult.error = batchError.message;
+        }
+      } else {
+        // No batch to process for this section
+        console.log(
+          `✅ Section ${i + 1} marked as success - no batches to execute`
+        );
         sectionResult.success = true;
-        console.log("✅ Section marked as success - no batches to execute");
       }
-
-      console.log(
-        `Section ${i + 1} overall result: ${
-          sectionResult.success ? "SUCCESS" : "FAILED"
-        }`
-      );
     } catch (error) {
       console.error(`❌ Error processing section ${i + 1}:`, error);
-      console.error("Error stack:", error.stack);
       sectionResult.error = error.message;
     }
 
@@ -1936,26 +2097,6 @@ async function executeBatchOperationsSectionBySection(
   );
 
   return allResults;
-}
-
-// Helper function to get fresh data for a single section
-async function getFreshSectionData(uuid, alias, sectionId) {
-  console.log(`Getting fresh data for section: ${sectionId}`);
-
-  const freshFlexStructureData = await getFlexStructure(uuid, alias);
-  const freshExtractedIds = extractHierarchicalIds(freshFlexStructureData);
-  const freshSection = freshExtractedIds.find((s) => s.sectionId === sectionId);
-
-  const { htmlIds: freshHtmlIds, flexWidgetIds: freshFlexWidgetIds } =
-    await parsePageHtml(alias, [freshSection]);
-
-  console.log("Fresh section data retrieved successfully");
-
-  return {
-    section: freshSection,
-    htmlId: freshHtmlIds[0],
-    flexWidgetId: freshFlexWidgetIds[0],
-  };
 }
 
 export async function OPTIONS() {
